@@ -1,9 +1,9 @@
 # Poll the Pogoh station API every 5 minutes and commit the result to the
 # `data` branch as one gzipped JSON file per poll (see src/pogoh/raw.py).
 #
-# - Runs at minutes 2, 7, 12, ... instead of 0, 5, 10, because GitHub says
-#   scheduled runs are most often delayed at the top of the hour.
-# - GitHub may still delay or drop some runs. The poll time inside each file
+# - Runs every 5 minutes, the shortest interval GitHub allows. Uses the
+#   standard "*/5" form: an earlier "2-59/5" schedule never fired.
+# - GitHub may delay or drop some runs, especially at the top of the hour. The poll time inside each file
 #   is the real fetch time, so delays show up honestly in the data.
 # - Only one run at a time; a queued run waits instead of overlapping.
 # - "Run workflow" on the Actions tab triggers a poll by hand.
@@ -12,7 +12,7 @@ name: Collect Pogoh snapshot
 
 on:
   schedule:
-    - cron: "2-59/5 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
