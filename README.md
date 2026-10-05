@@ -18,7 +18,30 @@ Station data comes from the [CityBikes API](https://citybik.es)
 asks projects to credit it as the source.
 
 The API returns only a live snapshot, so this project polls it every 5 minutes
-and stores the history locally in `data/pogoh.db` (not committed).
+and keeps its own history.
+
+## How data is collected
+
+The main collector is a scheduled GitHub Actions workflow
+(`.github/workflows/collect.yml`). Every 5 minutes it polls the API and
+commits one gzipped JSON file per poll to the `data` branch of this
+repository, so collection does not depend on a laptop being awake. The raw
+data is therefore public, like the API it comes from.
+
+GitHub runs scheduled workflows on a best-effort basis: runs can be delayed
+or dropped when GitHub is busy. Every record stores the actual fetch time,
+so the irregular spacing is visible and handled when building labels.
+
+For analysis, the laptop imports the branch into a local SQLite database,
+`data/pogoh.db`, which is not committed:
+
+```powershell
+.venv\Scripts\python scripts\import_raw.py
+```
+
+A Windows Task Scheduler collector that writes straight to the local
+database is also available (see below). It was the first setup, and gaps
+from laptop sleep made it unreliable on its own.
 
 ## Setup
 
@@ -29,15 +52,10 @@ python -m venv .venv
 .venv\Scripts\python -m pytest
 ```
 
-Run one poll by hand:
+Optional local collector, one poll by hand or every 5 minutes on a schedule:
 
 ```powershell
 .venv\Scripts\python scripts\run_collector.py
-```
-
-Schedule it every 5 minutes with Windows Task Scheduler:
-
-```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install_schedule.ps1
 ```
 
@@ -45,12 +63,16 @@ powershell -ExecutionPolicy Bypass -File scripts\install_schedule.ps1
 
 - `src/pogoh/db.py`: SQLite schema (polls, stations, observations) and the
   connection helper. Triggers make the tables append only.
-- `src/pogoh/collect.py`: fetches one snapshot, stores it in a single
-  transaction, and logs failed polls so gaps stay visible.
-- `scripts/run_collector.py`: runs one poll, skips if the last poll was under
-  4 minutes ago, and writes a line to `data/collector.log`.
-- `scripts/install_schedule.ps1`: registers the scheduled task.
-- `tests/`: tests for the schema and for storing a saved snapshot.
+- `src/pogoh/collect.py`: fetches one snapshot with retries, stores it in a
+  single transaction, and logs failed polls so gaps stay visible.
+- `src/pogoh/raw.py`: the one-file-per-poll record format used on the `data`
+  branch, and the import of those records into the database.
+- `.github/workflows/collect.yml`: the scheduled cloud collector.
+- `scripts/poll_to_file.py`: the poll step the workflow runs.
+- `scripts/import_raw.py`: fetches the `data` branch and imports new polls.
+- `scripts/run_collector.py`, `scripts/install_schedule.ps1`: the optional
+  local collector and its Task Scheduler setup.
+- `tests/`: tests for the schema, collection, raw records, and import.
 
 ## Data notes
 
