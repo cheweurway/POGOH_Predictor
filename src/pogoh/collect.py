@@ -6,19 +6,26 @@ The pieces are kept separate so each can be tested on its own:
 - store_snapshot() writes an already-fetched payload to the database. It never
   touches the network, so tests can feed it a saved JSON file.
 - record_failure() logs a poll that did not produce data.
-- poll_once() ties them together and makes sure every attempt leaves exactly
+- poll_once() ties them together and makes sure every run leaves exactly
   one row in the polls table, whether it worked or not.
 
 Data source: CityBikes (https://citybik.es), which is free to use with
 attribution.
 """
 
+import time
 from datetime import datetime, timezone
 
 import requests
 
 API_URL = "https://api.citybik.es/v2/networks/pittsburgh"
-REQUEST_TIMEOUT_SECONDS = 30
+# (connect, read) limits in seconds. A short connect limit keeps retries quick
+# when the network is down; the read limit allows for a slow response.
+REQUEST_TIMEOUT_SECONDS = (10, 30)
+# Waits between attempts when the connection itself fails, typically because
+# the laptop just woke and Wi-Fi is not back yet. Worst case is about 75
+# seconds, inside the scheduled task's 2 minute limit.
+RETRY_DELAYS_SECONDS = (15, 30)
 
 
 def utc_now_iso():
@@ -127,15 +134,35 @@ def record_failure(conn, polled_at_utc, error_text):
     return cursor.lastrowid
 
 
-def poll_once(conn, fetch=fetch_snapshot):
+def poll_once(conn, fetch=fetch_snapshot, retry_delays=RETRY_DELAYS_SECONDS, sleep=time.sleep):
     """Fetch and store one snapshot. Returns (poll_id, ok).
 
-    `fetch` can be swapped out in tests to simulate success or failure
-    without calling the real API.
+    Only connection failures are retried (DNS lookup failed, network
+    unreachable, connect timeout). Those requests never reached the API, so
+    retrying does not add load. Anything else, such as an HTTP error status or
+    a read timeout, is logged as a failure right away.
+
+    The poll time recorded is the start of the attempt that produced the
+    result, so it stays close to when the data was actually fetched.
+
+    `fetch` and `sleep` can be swapped out in tests to simulate failures
+    without calling the real API or waiting.
     """
-    polled_at = utc_now_iso()
-    try:
-        payload = fetch()
-        return store_snapshot(conn, payload, polled_at), True
-    except Exception as exc:  # any failure becomes a logged gap, not a crash
-        return record_failure(conn, polled_at, f"{type(exc).__name__}: {exc}"), False
+    attempts = len(retry_delays) + 1
+    for attempt in range(attempts):
+        polled_at = utc_now_iso()
+        try:
+            payload = fetch()
+        except requests.ConnectionError as exc:
+            if attempt < attempts - 1:
+                sleep(retry_delays[attempt])
+                continue
+            error = f"{type(exc).__name__} after {attempts} attempts: {exc}"
+            return record_failure(conn, polled_at, error), False
+        except Exception as exc:  # any other failure becomes a logged gap, not a crash
+            return record_failure(conn, polled_at, f"{type(exc).__name__}: {exc}"), False
+
+        try:
+            return store_snapshot(conn, payload, polled_at), True
+        except Exception as exc:
+            return record_failure(conn, polled_at, f"{type(exc).__name__}: {exc}"), False

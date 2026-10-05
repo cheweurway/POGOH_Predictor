@@ -85,17 +85,61 @@ def test_normalize_source_timestamp(raw, expected):
     assert normalize_source_timestamp(raw) == expected
 
 
-def test_failed_fetch_is_logged_as_a_gap(conn):
-    def broken_fetch():
-        raise requests.ConnectionError("network down")
+def flaky_fetch(failures, payload, exc=requests.ConnectionError("network down")):
+    """A fake fetch that raises `exc` for the first `failures` calls, then returns payload."""
+    calls = []
 
-    poll_id, ok = poll_once(conn, fetch=broken_fetch)
+    def fetch():
+        calls.append(1)
+        if len(calls) <= failures:
+            raise exc
+        return payload
+
+    fetch.calls = calls
+    return fetch
+
+
+def test_failed_fetch_is_logged_as_a_gap(conn):
+    fetch = flaky_fetch(failures=99, payload=None)
+    waits = []
+
+    poll_id, ok = poll_once(conn, fetch=fetch, sleep=waits.append)
 
     assert ok is False
+    assert len(fetch.calls) == 3 and waits == [15, 30]  # retried, then gave up
     row = conn.execute("SELECT ok, n_stations, error_text FROM polls WHERE poll_id = ?", (poll_id,)).fetchone()
     assert row[0] == 0 and row[1] is None
-    assert "network down" in row[2]
+    assert "network down" in row[2] and "3 attempts" in row[2]
+    # One run leaves exactly one polls row, not one per attempt.
+    assert conn.execute("SELECT COUNT(*) FROM polls").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 0
+
+
+def test_connection_error_then_success_stores_the_snapshot(conn, payload):
+    """The case seen in practice: the laptop wakes and Wi-Fi returns a few seconds later."""
+    fetch = flaky_fetch(failures=1, payload=payload)
+    waits = []
+
+    poll_id, ok = poll_once(conn, fetch=fetch, sleep=waits.append)
+
+    assert ok is True
+    assert len(fetch.calls) == 2 and waits == [15]
+    assert conn.execute("SELECT ok FROM polls").fetchall() == [(1,)]
+    assert conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 3
+
+
+@pytest.mark.parametrize("exc", [
+    requests.HTTPError("500 Server Error"),
+    requests.ReadTimeout("server too slow"),  # the request reached the server
+])
+def test_errors_from_the_server_are_not_retried(conn, payload, exc):
+    fetch = flaky_fetch(failures=1, payload=payload, exc=exc)
+    waits = []
+
+    poll_id, ok = poll_once(conn, fetch=fetch, sleep=waits.append)
+
+    assert ok is False
+    assert len(fetch.calls) == 1 and waits == []
 
 
 def test_malformed_payload_leaves_no_partial_rows(conn, payload):
