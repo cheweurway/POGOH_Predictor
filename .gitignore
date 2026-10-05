@@ -1,0 +1,20 @@
+# Local data: the SQLite database, logs, and anything else collected
+data/
+
+# Python environment and caches
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Assistant tooling folders that may be auto-generated
+.claude/
+CLAUDE.md
