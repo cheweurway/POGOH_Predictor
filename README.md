@@ -7,8 +7,9 @@ The data counts bikes at stations, not trips. A change in the count can come
 from a rider or from a rebalancing truck, so results describe availability,
 not demand.
 
-Status: data collection (milestone 1). Method, results, and limitations will
-be filled in as the project progresses.
+Status: collecting data. Labels, features, and baselines are built and
+tested (milestone 2). Models, results, and limitations come after 2 to 3
+weeks of data.
 
 ## Data source
 
@@ -19,6 +20,12 @@ asks projects to credit it as the source.
 
 The API returns only a live snapshot, so this project polls it every 5 minutes
 and keeps its own history.
+
+Weather data by [Open-Meteo.com](https://open-meteo.com), from its
+historical weather API, licensed CC BY 4.0.
+
+The academic calendar in `data/calendar.csv` is hand-made from the official
+CMU and University of Pittsburgh 2026-27 academic calendars.
 
 ## How data is collected
 
@@ -59,6 +66,43 @@ Optional local collector, one poll by hand or every 5 minutes on a schedule:
 powershell -ExecutionPolicy Bypass -File scripts\install_schedule.ps1
 ```
 
+## Labels
+
+These decisions are fixed for the whole project.
+
+- **Targets.** `stockout_30` and `stockout_60` are 1 when the station has 0
+  free bikes 30 or 60 minutes after time t. `dock_full_30` is 1 when it has 0
+  empty docks 30 minutes after t. Stockouts are the primary targets.
+- **Matching the future.** Polls are irregular, so the state at t + H is the
+  observation of the same station nearest to t + H, and only if it is within
+  3 minutes. Otherwise the label is missing and the row is dropped for that
+  target. Nothing is interpolated. Each target is matched separately, so a
+  row can have a 30 minute label but no 60 minute one.
+- **What counts as empty.** Only `free_bikes == 0`. A station that reports
+  it is not renting, but still lists bikes, is not counted as a stockout.
+  So far every station has always reported renting.
+- **Transition rows.** A row is a transition when the current state differs
+  from the future state, for example bikes now and none in 30 minutes.
+  Results are reported overall and on transition rows, because predicting
+  "no change" is hard to beat at stations that sit empty for hours.
+- **No future data in features.** Features at time t use only observations
+  at or before t. Tests rebuild features after deleting or scrambling every
+  later row and fail if anything changes.
+- **Split.** By time: oldest 70 percent of rows for training, next 15 percent
+  for validation, newest 15 percent for a single final test. Rows within 60
+  minutes before each boundary are dropped so that no training label is
+  taken from validation time, and no validation label from test time.
+
+## Features
+
+Current free bikes, empty docks, e-bikes, capacity (free plus empty), and
+fraction full. Values and changes from about 10, 30, and 60 minutes earlier
+(missing if no observation is close enough, never filled in), and minutes
+since the station's previous observation. Hour of day as sine and cosine,
+day of week, and weekend, in Pittsburgh time. CMU and Pitt in-term,
+no-classes, and finals flags. Hourly temperature and precipitation from the
+latest hour at or before t.
+
 ## Files
 
 - `src/pogoh/db.py`: SQLite schema (polls, stations, observations) and the
@@ -72,7 +116,23 @@ powershell -ExecutionPolicy Bypass -File scripts\install_schedule.ps1
 - `scripts/import_raw.py`: fetches the `data` branch and imports new polls.
 - `scripts/run_collector.py`, `scripts/install_schedule.ps1`: the optional
   local collector and its Task Scheduler setup.
-- `tests/`: tests for the schema, collection, raw records, and import.
+- `src/pogoh/data.py`: loads observations and polls from the database into
+  pandas, with times in UTC.
+- `src/pogoh/labels.py`: the future-state targets and transition flags.
+- `src/pogoh/features.py`: model inputs, built from past data only.
+- `src/pogoh/calendar.py` and `data/calendar.csv`: academic calendar flags.
+- `src/pogoh/weather.py`, `scripts/update_weather.py`: hourly weather,
+  cached in `data/weather.csv` (not committed).
+- `src/pogoh/evaluate.py`: the time split.
+- `src/pogoh/baselines.py`: persistence and hour-of-week baselines.
+- `tests/`: tests for every module above, including the leakage tests.
+
+## Preparing data for analysis
+
+```powershell
+.venv\Scripts\python scripts\import_raw.py
+.venv\Scripts\python scripts\update_weather.py
+```
 
 ## Data notes
 
