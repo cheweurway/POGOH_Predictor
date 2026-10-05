@@ -22,6 +22,9 @@ Academic calendar (if a calendar is given)
   cmu_in_term, cmu_no_classes, cmu_finals, pitt_in_term, pitt_no_classes,
   pitt_finals
 
+Weather (if an hourly weather table is given, see weather.py)
+  temperature_c, precipitation_mm from the latest hour at or before t
+
 Leakage rule: no feature for time t may read any row after t. The tests in
 tests/test_features.py enforce this by rebuilding features with all later
 rows removed or scrambled and checking that nothing changes.
@@ -31,6 +34,7 @@ import numpy as np
 import pandas as pd
 
 from pogoh.calendar import calendar_flags
+from pogoh.weather import weather_features
 
 LOCAL_TZ = "America/New_York"
 LAGS_MINUTES = (10, 30, 60)
@@ -54,7 +58,7 @@ def _lagged(obs, lag_minutes, columns):
     return matched[columns]
 
 
-def build_features(obs, calendar=None):
+def build_features(obs, calendar=None, weather=None):
     f = pd.DataFrame(index=obs.index)
 
     # Current state
@@ -87,5 +91,8 @@ def build_features(obs, calendar=None):
 
     if calendar is not None:
         f = f.join(calendar_flags(local.dt.date, calendar))
+
+    if weather is not None:
+        f = f.join(weather_features(obs["t"], weather))
 
     return f
