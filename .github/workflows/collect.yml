@@ -1,18 +1,20 @@
-# Poll the Pogoh station API every 5 minutes and commit the result to the
-# `data` branch as one gzipped JSON file per poll (see src/pogoh/raw.py).
+# Poll the Pogoh station API and commit the result to the `data` branch as
+# one gzipped JSON file per poll (see src/pogoh/raw.py).
 #
-# - Runs every 5 minutes, the shortest interval GitHub allows. Uses the
-#   standard "*/5" form: an earlier "2-59/5" schedule never fired.
-# - GitHub may delay or drop some runs, especially at the top of the hour. The poll time inside each file
-#   is the real fetch time, so delays show up honestly in the data.
+# - Triggered every 5 minutes from outside by a cron-job.org job that calls
+#   GitHub's workflow_dispatch API with a fine-grained token (Actions write
+#   on this repository only). GitHub's own `schedule` trigger is not used:
+#   it never fired for this repository in over 4 hours of testing.
+# - Runs can still wait in GitHub's queue for a free machine. The poll time
+#   inside each file is the real fetch time, so delays show up honestly.
 # - Only one run at a time; a queued run waits instead of overlapping.
+# - poll_to_file.py skips if the last successful poll was under 4 minutes
+#   ago, so runs released from the queue together do not poll back to back.
 # - "Run workflow" on the Actions tab triggers a poll by hand.
 
 name: Collect Pogoh snapshot
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -54,6 +56,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add raw
+          if git diff --cached --quiet; then
+            echo "No new record (poll skipped by the minimum gap guard)."
+            exit 0
+          fi
           git commit --quiet -m "Add poll record"
           # Each file has a unique name, so a rebase never conflicts.
           for attempt in 1 2 3; do
