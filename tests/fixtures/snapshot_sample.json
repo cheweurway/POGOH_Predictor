@@ -1,0 +1,119 @@
+{
+  "network": {
+    "id": "pittsburgh",
+    "name": "Pogoh",
+    "location": {
+      "latitude": 40.4406,
+      "longitude": -79.9893,
+      "city": "Pittsburgh, PA",
+      "country": "US"
+    },
+    "href": "/v2/networks/pittsburgh",
+    "company": [
+      "Bike Share Pittsburgh Inc.",
+      "PBSC Urban Solutions"
+    ],
+    "gbfs_href": "https://pittsburgh.publicbikesystem.net/customer/gbfs/v2/gbfs.json",
+    "stations": [
+      {
+        "id": "00a20c626c01de8b91b661845ca8e668",
+        "name": "21st St & Penn Ave",
+        "latitude": 40.451747,
+        "longitude": -79.983278,
+        "timestamp": "2026-10-05T00:50:29.410760+00:00Z",
+        "free_bikes": 5,
+        "empty_slots": 13,
+        "extra": {
+          "uid": "18",
+          "renting": true,
+          "returning": true,
+          "last_updated": "2026-10-05T00:49:23",
+          "address": "21st St & Penn Ave",
+          "post_code": "121212",
+          "payment": [
+            "key",
+            "transitcard",
+            "creditcard",
+            "phone"
+          ],
+          "payment-terminal": true,
+          "altitude": 0.0,
+          "slots": 19,
+          "normal_bikes": 3,
+          "ebikes": 2,
+          "has_ebikes": true,
+          "scooters": 0,
+          "has_scooters": true,
+          "rental_uris": {},
+          "virtual": false
+        }
+      },
+      {
+        "id": "5545bb4c40377812c171f933d239779f",
+        "name": "Fifth Ave & S Bouquet St",
+        "latitude": 40.442248,
+        "longitude": -79.957653,
+        "timestamp": "2026-10-05T00:50:29.409041+00:00Z",
+        "free_bikes": 0,
+        "empty_slots": 22,
+        "extra": {
+          "uid": "28",
+          "renting": true,
+          "returning": true,
+          "last_updated": "2026-10-05T00:49:03",
+          "address": "Fifth Ave & N Bouquet",
+          "post_code": "121212",
+          "payment": [
+            "key",
+            "transitcard",
+            "creditcard",
+            "phone"
+          ],
+          "payment-terminal": true,
+          "altitude": 0.0,
+          "slots": 23,
+          "normal_bikes": 0,
+          "ebikes": 0,
+          "has_ebikes": true,
+          "scooters": 0,
+          "has_scooters": true,
+          "rental_uris": {},
+          "virtual": false
+        }
+      },
+      {
+        "id": "3050b5f40fd19a7611fec87d4a5f0818",
+        "name": "First Ave & B St",
+        "latitude": 40.435829,
+        "longitude": -79.996952,
+        "timestamp": "2026-10-05T00:50:29.409559+00:00Z",
+        "free_bikes": 14,
+        "empty_slots": 0,
+        "extra": {
+          "uid": "31",
+          "renting": true,
+          "returning": true,
+          "last_updated": "2026-10-05T00:49:26",
+          "address": "First & B",
+          "post_code": "15219",
+          "payment": [
+            "key",
+            "transitcard",
+            "creditcard",
+            "phone"
+          ],
+          "payment-terminal": true,
+          "altitude": 0.0,
+          "slots": 15,
+          "normal_bikes": 10,
+          "ebikes": 4,
+          "has_ebikes": true,
+          "scooters": 0,
+          "has_scooters": true,
+          "rental_uris": {},
+          "virtual": false
+        }
+      }
+    ]
+  }
+}
