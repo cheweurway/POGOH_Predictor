@@ -55,6 +55,20 @@ def write_record(root, record):
     return path
 
 
+def latest_success_time(root):
+    """Poll time of the newest successful record under root, or None.
+
+    File names sort by time, so this reads files newest first and stops at
+    the first successful one. Failed polls are skipped: a failure never
+    reached the API, so it should not delay the next attempt.
+    """
+    for path in sorted(Path(root).glob("raw/*/*/*/*.json.gz"), reverse=True):
+        record = decode_record(path.read_bytes())
+        if record["ok"]:
+            return datetime.fromisoformat(record["polled_at_utc"])
+    return None
+
+
 def import_records(conn, records):
     """Load records into the database, skipping polls already stored.
 

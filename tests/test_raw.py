@@ -2,13 +2,16 @@
 
 import importlib.util
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 import requests
 
 from pogoh.db import connect
-from pogoh.raw import decode_record, encode_record, import_records, make_record, record_relpath, write_record
+from pogoh.raw import (
+    decode_record, encode_record, import_records, latest_success_time, make_record, record_relpath, write_record,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "snapshot_sample.json"
 
@@ -86,3 +89,41 @@ def test_write_record_uses_the_dated_path(tmp_path, payload):
     record = make_record("2026-10-05T14:00:00+00:00", payload=payload)
     path = write_record(tmp_path, record)
     assert path == tmp_path / record_relpath(record["polled_at_utc"])
+
+
+# --- minimum gap guard in poll_to_file ------------------------------------
+
+def _never_called():
+    raise AssertionError("fetch should not run when the guard skips")
+
+
+def test_latest_success_time_skips_failures(tmp_path, payload):
+    write_record(tmp_path, make_record("2026-10-05T14:00:00+00:00", payload=payload))
+    write_record(tmp_path, make_record("2026-10-05T14:05:00+00:00", error_text="ConnectionError: down"))
+    assert latest_success_time(tmp_path) == datetime.fromisoformat("2026-10-05T14:00:00+00:00")
+    assert latest_success_time(tmp_path / "empty") is None
+
+
+def test_guard_skips_a_poll_too_soon_after_the_last_success(tmp_path, payload):
+    write_record(tmp_path, make_record("2026-10-05T14:00:00+00:00", payload=payload))
+    now = datetime.fromisoformat("2026-10-05T14:01:00+00:00")  # 60 s later, like a bunched run
+
+    assert poll_to_file.main(["--out", str(tmp_path)], fetch=_never_called, now=now) == 0
+    assert len(list(tmp_path.rglob("*.json.gz"))) == 1  # nothing new written
+
+
+def test_guard_allows_a_poll_after_four_minutes(tmp_path, payload):
+    write_record(tmp_path, make_record("2026-10-05T14:00:00+00:00", payload=payload))
+    now = datetime.fromisoformat("2026-10-05T14:05:00+00:00")
+
+    poll_to_file.main(["--out", str(tmp_path)], fetch=lambda: payload, now=now)
+    assert len(list(tmp_path.rglob("*.json.gz"))) == 2
+
+
+def test_recent_failure_does_not_block_the_next_poll(tmp_path, payload):
+    write_record(tmp_path, make_record("2026-10-05T14:00:00+00:00", payload=payload))
+    write_record(tmp_path, make_record("2026-10-05T14:05:00+00:00", error_text="ConnectionError: down"))
+    now = datetime.fromisoformat("2026-10-05T14:06:00+00:00")  # 6 min after the last success
+
+    poll_to_file.main(["--out", str(tmp_path)], fetch=lambda: payload, now=now)
+    assert len(list(tmp_path.rglob("*.json.gz"))) == 3
