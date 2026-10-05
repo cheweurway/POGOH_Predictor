@@ -1,5 +1,7 @@
-# Local data: the SQLite database, logs, and anything else collected
-data/
+# Local data: the SQLite database, logs, and anything else collected.
+# The hand-made academic calendar is the one exception and is versioned.
+data/*
+!data/calendar.csv
 
 # Python environment and caches
 .venv/
