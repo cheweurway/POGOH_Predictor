@@ -4,7 +4,7 @@ Windows Task Scheduler calls this every 5 minutes. Running once per call
 (instead of a long-lived loop) means a laptop sleep or crash only costs the
 polls that were missed, and the next scheduled run starts clean.
 
-Safety rule: if the previous poll attempt was less than MIN_GAP_SECONDS ago,
+Safety rule: if the last successful poll was less than MIN_GAP_SECONDS ago,
 this run skips, so we can never poll faster than intended even if the task
 fires twice or someone runs the script by hand.
 
@@ -31,7 +31,12 @@ LOG_PATH = DEFAULT_DB_PATH.parent / "collector.log"
 
 
 def seconds_since_last_poll(conn):
-    row = conn.execute("SELECT MAX(polled_at_utc) FROM polls").fetchone()
+    """Seconds since the last successful poll, or None if there is none.
+
+    Failed polls are ignored. A failed connection never reached the API, so
+    it should not block the next run from trying again.
+    """
+    row = conn.execute("SELECT MAX(polled_at_utc) FROM polls WHERE ok = 1").fetchone()
     if row[0] is None:
         return None
     last = datetime.fromisoformat(row[0])
