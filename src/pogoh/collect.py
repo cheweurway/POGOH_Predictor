@@ -3,6 +3,7 @@
 The pieces are kept separate so each can be tested on its own:
 
 - fetch_snapshot() does the HTTP request and nothing else.
+- fetch_with_retry() wraps it, retrying when the network is not up yet.
 - store_snapshot() writes an already-fetched payload to the database. It never
   touches the network, so tests can feed it a saved JSON file.
 - record_failure() logs a poll that did not produce data.
@@ -134,35 +135,54 @@ def record_failure(conn, polled_at_utc, error_text):
     return cursor.lastrowid
 
 
-def poll_once(conn, fetch=fetch_snapshot, retry_delays=RETRY_DELAYS_SECONDS, sleep=time.sleep):
-    """Fetch and store one snapshot. Returns (poll_id, ok).
+class FetchFailed(Exception):
+    """A fetch that gave up. Carries the poll time so the failure can be logged."""
+
+    def __init__(self, polled_at_utc, message):
+        super().__init__(message)
+        self.polled_at_utc = polled_at_utc
+
+
+def fetch_with_retry(fetch=fetch_snapshot, retry_delays=RETRY_DELAYS_SECONDS, sleep=time.sleep):
+    """Fetch a snapshot, retrying connection failures. Returns (payload, polled_at_utc).
 
     Only connection failures are retried (DNS lookup failed, network
     unreachable, connect timeout). Those requests never reached the API, so
     retrying does not add load. Anything else, such as an HTTP error status or
-    a read timeout, is logged as a failure right away.
+    a read timeout, fails right away.
 
-    The poll time recorded is the start of the attempt that produced the
+    The poll time returned is the start of the attempt that produced the
     result, so it stays close to when the data was actually fetched.
 
-    `fetch` and `sleep` can be swapped out in tests to simulate failures
-    without calling the real API or waiting.
+    Raises FetchFailed on failure. `fetch` and `sleep` can be swapped out in
+    tests to simulate failures without calling the real API or waiting.
     """
     attempts = len(retry_delays) + 1
     for attempt in range(attempts):
         polled_at = utc_now_iso()
         try:
-            payload = fetch()
+            return fetch(), polled_at
         except requests.ConnectionError as exc:
             if attempt < attempts - 1:
                 sleep(retry_delays[attempt])
                 continue
-            error = f"{type(exc).__name__} after {attempts} attempts: {exc}"
-            return record_failure(conn, polled_at, error), False
-        except Exception as exc:  # any other failure becomes a logged gap, not a crash
-            return record_failure(conn, polled_at, f"{type(exc).__name__}: {exc}"), False
-
-        try:
-            return store_snapshot(conn, payload, polled_at), True
+            raise FetchFailed(polled_at, f"{type(exc).__name__} after {attempts} attempts: {exc}") from exc
         except Exception as exc:
-            return record_failure(conn, polled_at, f"{type(exc).__name__}: {exc}"), False
+            raise FetchFailed(polled_at, f"{type(exc).__name__}: {exc}") from exc
+
+
+def poll_once(conn, fetch=fetch_snapshot, retry_delays=RETRY_DELAYS_SECONDS, sleep=time.sleep):
+    """Fetch and store one snapshot. Returns (poll_id, ok).
+
+    Every call leaves exactly one row in polls: a success with its
+    observations, or a logged failure.
+    """
+    try:
+        payload, polled_at = fetch_with_retry(fetch, retry_delays, sleep)
+    except FetchFailed as exc:  # becomes a logged gap, not a crash
+        return record_failure(conn, exc.polled_at_utc, str(exc)), False
+
+    try:
+        return store_snapshot(conn, payload, polled_at), True
+    except Exception as exc:
+        return record_failure(conn, polled_at, f"{type(exc).__name__}: {exc}"), False
