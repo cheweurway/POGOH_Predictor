@@ -24,7 +24,9 @@ concurrency:
 
 jobs:
   poll:
-    runs-on: ubuntu-latest
+    # Pinned so GitHub's switch of ubuntu-latest to a new release
+    # (from 2026-10-19) cannot change the environment mid-collection.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Check out code (main)
