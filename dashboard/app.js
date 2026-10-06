@@ -123,20 +123,28 @@ function renderMap(stations) {
     }).addTo(state.map);
   }
   const located = stations.filter((s) => s.lat != null && s.lon != null);
+  // The map needs a view (center and zoom) before any circle is added or
+  // styled; Leaflet cannot place a circle on a map with no view. So zoom to
+  // the stations first, once, and leave the view alone after that.
+  if (!state.fitted) {
+    if (located.length) {
+      state.map.fitBounds(L.latLngBounds(located.map((s) => [s.lat, s.lon])), { padding: [20, 20] });
+    } else {
+      state.map.setView([40.44, -79.96], 12);  // Pittsburgh
+    }
+    state.fitted = true;
+  }
   for (const station of located) {
     let marker = state.markers[station.station_id];
     if (!marker) {
-      marker = L.circleMarker([station.lat, station.lon]).addTo(state.map);
+      marker = L.circleMarker([station.lat, station.lon], markerStyle(station)).addTo(state.map);
       marker.on("click", () => selectStation(station.station_id));
       state.markers[station.station_id] = marker;
+    } else {
+      marker.setStyle(markerStyle(station));
     }
-    marker.setStyle(markerStyle(station));
     marker.bindPopup(popupHtml(station));
     marker.bindTooltip(escapeHtml(station.name));
-  }
-  if (located.length && !state.fitted) {  // zoom to the stations once, then leave the view alone
-    state.map.fitBounds(L.latLngBounds(located.map((s) => [s.lat, s.lon])), { padding: [20, 20] });
-    state.fitted = true;
   }
 }
 
@@ -270,14 +278,30 @@ async function init() {
     return;
   }
   state.stations = stations;
-  renderStatus(meta);
-  renderMap(stations);
-  renderPicker(stations);
-  renderHeatmap(heatmap);
-  renderHealth(health);
-
-  const preferred = stations.find((s) => s.name.includes(DEFAULT_STATION_MATCH)) || stations[0];
-  if (preferred) selectStation(preferred.station_id);
+  // Draw each part separately, so one failing part cannot blank the rest.
+  // Failures are listed in the status box and the browser console.
+  const failed = [];
+  const attempt = (label, draw) => {
+    try {
+      draw();
+    } catch (error) {
+      failed.push(label);
+      console.error(`Dashboard: ${label} failed`, error);
+    }
+  };
+  attempt("header", () => renderStatus(meta));
+  attempt("map", () => renderMap(stations));
+  attempt("station list", () => renderPicker(stations));
+  attempt("heatmap", () => renderHeatmap(heatmap));
+  attempt("collection health", () => renderHealth(health));
+  attempt("station history", () => {
+    const preferred = stations.find((s) => s.name.includes(DEFAULT_STATION_MATCH)) || stations[0];
+    if (preferred) selectStation(preferred.station_id);
+  });
+  if (failed.length) {
+    status.textContent += ` Problem drawing: ${failed.join(", ")} (see browser console).`;
+    status.classList.add("stale");
+  }
 }
 
 init();
