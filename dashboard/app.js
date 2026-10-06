@@ -1,7 +1,7 @@
 // POGOH availability dashboard.
 //
 // Reads the JSON files written by scripts/build_dashboard.py (in data/) and
-// draws four views: a station map (Leaflet + OpenStreetMap tiles), one
+// draws four views: a station map (Leaflet over an OpenFreeMap background), one
 // station's history, a stockout heatmap, and collection health (Plotly).
 //
 // Times from the build are either UTC ISO strings (ending in +00:00) or
@@ -17,7 +17,7 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const VIRIDIS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"];
 const DEFAULT_STATION_MATCH = "TCS Hall";
 
-const state = { map: null, markers: {}, stations: [], selected: null, fitted: false };
+const state = { map: null, basemap: null, basemapKind: null, markers: {}, stations: [], selected: null };
 
 // ---------- small helpers ----------
 
@@ -98,6 +98,62 @@ function renderStatus(meta) {
 
 // ---------- map ----------
 
+// Background map. OpenFreeMap's plain "positron" style, or its "dark" style
+// when the page is in dark mode. Both are free with no key; credit is added
+// to the map corner automatically from the style. If the browser cannot run
+// MapLibre (it needs WebGL) or ?basemap=osm is in the address, standard
+// OpenStreetMap tiles are used instead, so the map is never left blank.
+const OPENFREEMAP = {
+  light: "https://tiles.openfreemap.org/styles/positron",
+  dark: "https://tiles.openfreemap.org/styles/dark",
+};
+const DARK_QUERY = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+function isDark() {
+  const forced = document.documentElement.dataset.theme;
+  if (forced) return forced === "dark";
+  return Boolean(DARK_QUERY && DARK_QUERY.matches);
+}
+
+function webglAvailable() {
+  try {
+    const canvas = document.createElement("canvas");
+    return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+  } catch (error) {
+    return false;
+  }
+}
+
+function addOsmTiles() {
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(state.map);
+  state.basemapKind = "osm";
+}
+
+function addBasemap() {
+  const forceOsm = new URLSearchParams(location.search).get("basemap") === "osm";
+  const canUseMapLibre = typeof L.maplibreGL === "function" && window.maplibregl && webglAvailable();
+  if (forceOsm || !canUseMapLibre) {
+    addOsmTiles();
+    return;
+  }
+  try {
+    state.basemap = L.maplibreGL({ style: isDark() ? OPENFREEMAP.dark : OPENFREEMAP.light }).addTo(state.map);
+    state.basemapKind = "openfreemap";
+    // Follow the system's light or dark setting while the page is open.
+    if (DARK_QUERY && DARK_QUERY.addEventListener) {
+      DARK_QUERY.addEventListener("change", () => {
+        state.basemap.getMaplibreMap().setStyle(isDark() ? OPENFREEMAP.dark : OPENFREEMAP.light);
+      });
+    }
+  } catch (error) {
+    console.warn("Dashboard: OpenFreeMap failed, using OpenStreetMap tiles", error);
+    addOsmTiles();
+  }
+}
+
 function markerStyle(station) {
   if (station.free_bikes === 0) {
     return { radius: 8, color: "#222", weight: 2, dashArray: "3 3", fillColor: "#fff", fillOpacity: 1 };
@@ -115,24 +171,18 @@ function popupHtml(station) {
 }
 
 function renderMap(stations) {
+  const located = stations.filter((s) => s.lat != null && s.lon != null);
   if (!state.map) {
     state.map = L.map("map", { scrollWheelZoom: false });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(state.map);
-  }
-  const located = stations.filter((s) => s.lat != null && s.lon != null);
-  // The map needs a view (center and zoom) before any circle is added or
-  // styled; Leaflet cannot place a circle on a map with no view. So zoom to
-  // the stations first, once, and leave the view alone after that.
-  if (!state.fitted) {
+    // The map needs a view (center and zoom) before any background or circle
+    // is added; Leaflet cannot place things on a map with no view. So zoom to
+    // the stations first, once, and leave the view alone after that.
     if (located.length) {
       state.map.fitBounds(L.latLngBounds(located.map((s) => [s.lat, s.lon])), { padding: [20, 20] });
     } else {
       state.map.setView([40.44, -79.96], 12);  // Pittsburgh
     }
-    state.fitted = true;
+    addBasemap();
   }
   for (const station of located) {
     let marker = state.markers[station.station_id];
