@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>POGOH Availability</title>
+  <meta name="description" content="Bike and dock availability at Pittsburgh POGOH bike share stations, collected every 5 minutes.">
+  <!-- Leaflet (map) and Plotly (charts) from cdnjs, pinned versions with integrity hashes. -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
+        integrity="sha512-Zcn6bjR/8RZbLEpLIeOwNtzREBAJnUKESxces60Mpoj+2okopSAcSUIUOseddDm0cxnGQzxIR7vJgsLZbdLE3w=="
+        crossorigin="anonymous">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="page-header">
+    <div>
+      <h1>POGOH availability</h1>
+      <p class="subtitle">Bikes and empty docks at Pittsburgh's 60 POGOH stations, checked about every 5 minutes.</p>
+    </div>
+    <p id="status" class="status" role="status">Loading data...</p>
+  </header>
+
+  <main>
+    <section aria-labelledby="map-title">
+      <h2 id="map-title">Stations now</h2>
+      <p class="note">Color shows how full each station is (bikes as a share of bikes plus empty docks). Dashed white circles have no bikes. Click a station for details and its history below.</p>
+      <div id="map" aria-label="Map of POGOH stations"></div>
+      <div class="legend" aria-hidden="true">
+        <span class="legend-item"><span class="swatch empty"></span>0 bikes</span>
+        <span class="legend-scale">
+          <span class="legend-bar"></span>
+          <span class="legend-ends"><span>few bikes</span><span>full of bikes</span></span>
+        </span>
+      </div>
+    </section>
+
+    <section aria-labelledby="series-title">
+      <h2 id="series-title">Station history</h2>
+      <label class="picker">Station
+        <select id="station-select"></select>
+      </label>
+      <div id="series-chart" class="chart"></div>
+      <p class="note">Breaks in the lines are gaps of more than <span class="gap-minutes">10</span> minutes with no data; nothing is filled in. Diamonds mark suspected rebalancing: 5 or more bikes added or removed between two polls.</p>
+    </section>
+
+    <section aria-labelledby="heatmap-title">
+      <h2 id="heatmap-title">When stations run out of bikes</h2>
+      <p class="note">Share of polls with 0 bikes, by station and hour of the week (Pittsburgh time). Blank cells have fewer than 3 polls. Stations with the highest overall share are at the top. Counts are polls, not minutes.</p>
+      <div id="heatmap-chart" class="chart"></div>
+    </section>
+
+    <section aria-labelledby="health-title">
+      <h2 id="health-title">Collection health</h2>
+      <p class="note">Successful and failed polls per hour. A healthy hour has about 12. Gaps of more than <span class="gap-minutes">10</span> minutes between successful polls are listed below.</p>
+      <div id="health-chart" class="chart"></div>
+      <div class="table-wrap">
+        <table id="gap-table">
+          <thead><tr><th>Gap start</th><th>Gap end</th><th>Minutes</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Station data: <a href="https://citybik.es">CityBikes</a>, built on <a href="https://github.com/eskerda/pybikes">PyBikes</a>. Map: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.</p>
+    <p>Counts show bikes at stations, not trips: a change can come from a rider or from a rebalancing truck. All times are Pittsburgh time.</p>
+    <p id="built-at"></p>
+    <p><a href="https://github.com/cheweurway/POGOH_Predictor">Source code</a></p>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
+          integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg=="
+          crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/4.1.2/plotly-cartesian.min.js"
+          integrity="sha512-1eJbqVYRGx6VHMwztWoUoiPL+6Sg6P3nkTzGnXPFS4px/jbJjKg46BG7zbfDnPGOqnn46QLge6jcw0BHc0OZXA=="
+          crossorigin="anonymous"></script>
+  <script src="app.js"></script>
+</body>
+</html>
