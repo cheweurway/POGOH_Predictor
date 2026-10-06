@@ -98,22 +98,12 @@ function renderStatus(meta) {
 
 // ---------- map ----------
 
-// Background map. OpenFreeMap's plain "positron" style, or its "dark" style
-// when the page is in dark mode. Both are free with no key; credit is added
-// to the map corner automatically from the style. If the browser cannot run
-// MapLibre (it needs WebGL) or ?basemap=osm is in the address, standard
-// OpenStreetMap tiles are used instead, so the map is never left blank.
-const OPENFREEMAP = {
-  light: "https://tiles.openfreemap.org/styles/positron",
-  dark: "https://tiles.openfreemap.org/styles/dark",
-};
-const DARK_QUERY = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
-
-function isDark() {
-  const forced = document.documentElement.dataset.theme;
-  if (forced) return forced === "dark";
-  return Boolean(DARK_QUERY && DARK_QUERY.matches);
-}
+// Background map: OpenFreeMap's plain light "positron" style, in both light
+// and dark page modes (the user prefers it). Free with no key; credit is
+// added to the map corner automatically from the style. If the browser
+// cannot run MapLibre (it needs WebGL) or ?basemap=osm is in the address,
+// standard OpenStreetMap tiles are used instead, so the map is never blank.
+const OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
 
 function webglAvailable() {
   try {
@@ -140,14 +130,8 @@ function addBasemap() {
     return;
   }
   try {
-    state.basemap = L.maplibreGL({ style: isDark() ? OPENFREEMAP.dark : OPENFREEMAP.light }).addTo(state.map);
+    state.basemap = L.maplibreGL({ style: OPENFREEMAP_STYLE }).addTo(state.map);
     state.basemapKind = "openfreemap";
-    // Follow the system's light or dark setting while the page is open.
-    if (DARK_QUERY && DARK_QUERY.addEventListener) {
-      DARK_QUERY.addEventListener("change", () => {
-        state.basemap.getMaplibreMap().setStyle(isDark() ? OPENFREEMAP.dark : OPENFREEMAP.light);
-      });
-    }
   } catch (error) {
     console.warn("Dashboard: OpenFreeMap failed, using OpenStreetMap tiles", error);
     addOsmTiles();
