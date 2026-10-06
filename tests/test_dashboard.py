@@ -78,8 +78,8 @@ def test_jump_across_a_gap_is_not_flagged():
 
 # --- stockout_heatmap ------------------------------------------------------
 
-def test_heatmap_cell_uses_local_hour_of_week_across_daylight_saving():
-    # Monday 00:00 EDT = 04:00 UTC; a week after DST ends, Monday 00:00 EST = 05:00 UTC.
+def test_heatmap_cell_uses_local_hour_across_daylight_saving():
+    # 00:00 in Pittsburgh is 04:00 UTC before Nov 1 (EDT) and 05:00 UTC after (EST).
     edt = pd.Timestamp("2026-10-05 04:00", tz="UTC")
     est = pd.Timestamp("2026-11-02 05:00", tz="UTC")
     df = pd.concat([obs([("A", m, 0, 10) for m in (0, 5, 10)], start=edt),
@@ -90,18 +90,16 @@ def test_heatmap_cell_uses_local_hour_of_week_across_daylight_saving():
     assert sum(v is not None for v in row) == 1  # nothing landed in another hour
 
 
-def test_heatmap_rates_blanks_and_order():
-    df = obs([
-        ("A", 0, 0, 10), ("A", 5, 3, 7), ("A", 10, 0, 10), ("A", 15, 0, 10),  # 3 of 4 empty
-        ("B", 0, 4, 6), ("B", 5, 4, 6),                                        # only 2 rows
-    ])
-    h = stockout_heatmap(df)
+def test_heatmap_combines_days_rates_blanks_and_order():
+    monday = obs([("A", 0, 0, 10), ("A", 5, 3, 7), ("B", 0, 4, 6), ("B", 5, 4, 6)])  # 10:00 local
+    tuesday = obs([("A", 0, 0, 10), ("A", 5, 0, 10)], start=T0 + pd.Timedelta(days=1))
+    h = stockout_heatmap(pd.concat([monday, tuesday], ignore_index=True))
     assert h["station_ids"] == ["A", "B"]  # highest overall share first
     assert h["overall"] == [0.75, 0.0]
-    hour = 0 * 24 + 10  # Monday 10:00 local
-    assert h["z"][0][hour] == 0.75
-    assert h["z"][1][hour] is None  # fewer than 3 observations
-    assert len(h["z"][0]) == 168
+    assert h["hours"] == list(range(24)) and len(h["z"][0]) == 24
+    assert h["z"][0][10] == 0.75  # Monday and Tuesday 10:00 combined: 3 of 4 empty
+    assert h["z"][1][10] is None  # only 2 observations for B
+    assert h["z"][0][9] is None  # no data at 9:00
 
 
 # --- poll_health -----------------------------------------------------------

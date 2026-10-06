@@ -123,29 +123,31 @@ def rebalancing_events(obs, gap=GAP, jump=REBALANCE_JUMP):
     return events
 
 
-def hour_of_week_local(t):
-    """0 to 167: Monday 00:00 local is 0, Sunday 23:00 local is 167."""
-    local = t.dt.tz_convert(TZ)
-    return local.dt.dayofweek * 24 + local.dt.hour
+def hour_of_day_local(t):
+    """0 to 23: the hour of the day in Pittsburgh time."""
+    return t.dt.tz_convert(TZ).dt.hour
 
 
 def stockout_heatmap(obs, min_obs=HEATMAP_MIN_OBS):
-    """Share of observations with free_bikes == 0, per station and hour of week.
+    """Share of observations with free_bikes == 0, per station and hour of day.
 
-    Cells with fewer than `min_obs` observations are None (blank). Stations
-    are sorted by overall stockout share, highest first. Shares count
+    Hours are Pittsburgh time with all days combined, so the grid fills in
+    after a single day of data. Cells with fewer than `min_obs` observations
+    are None (blank). Stations are sorted by overall stockout share, highest
+    first, so the page can show the top rows only. Shares count
     observations, not minutes, so periods with more polls weigh more.
     """
     empty = (obs["free_bikes"] == 0).astype(float)
-    how = hour_of_week_local(obs["t"])
-    cells = empty.groupby([obs["station_id"], how]).agg(["mean", "size"])
+    hour = hour_of_day_local(obs["t"])
+    cells = empty.groupby([obs["station_id"], hour]).agg(["mean", "size"])
     rates = cells["mean"].where(cells["size"] >= min_obs).unstack()
-    rates = rates.reindex(columns=range(168))
+    rates = rates.reindex(columns=range(24))
     overall = empty.groupby(obs["station_id"]).mean().sort_values(ascending=False, kind="stable")
     rates = rates.reindex(overall.index)
     return {
         "station_ids": list(overall.index),
         "overall": [_clean(v) for v in overall],
+        "hours": list(range(24)),
         "z": [[_clean(v) for v in row] for row in rates.to_numpy()],
     }
 
