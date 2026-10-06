@@ -13,8 +13,10 @@
 const TZ = "America/New_York";
 const DATA_DIR = "data/";
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-// Viridis stops, the same as the legend gradient in style.css.
-const VIRIDIS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"];
+// Red to yellow to green: red = no bikes, green = full of bikes. The same
+// stops as the legend gradient in style.css. Empty stations also get a
+// dashed outline, so they stand out without relying on color alone.
+const BIKE_SCALE = ["#d73027", "#fc8d59", "#fee08b", "#91cf60", "#1a9850"];
 const DEFAULT_STATION_MATCH = "TCS Hall";
 
 const state = { map: null, basemap: null, basemapKind: null, markers: {}, stations: [], selected: null };
@@ -52,12 +54,12 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-// Interpolate the viridis scale at f in [0, 1].
-function viridis(f) {
-  const x = Math.min(1, Math.max(0, f)) * (VIRIDIS.length - 1);
-  const i = Math.min(VIRIDIS.length - 2, Math.floor(x));
+// Interpolate the bike scale at f in [0, 1] (0 = red, 1 = green).
+function bikeColor(f) {
+  const x = Math.min(1, Math.max(0, f)) * (BIKE_SCALE.length - 1);
+  const i = Math.min(BIKE_SCALE.length - 2, Math.floor(x));
   const t = x - i;
-  const a = VIRIDIS[i], b = VIRIDIS[i + 1];
+  const a = BIKE_SCALE[i], b = BIKE_SCALE[i + 1];
   const channel = (k) => Math.round(parseInt(a.slice(k, k + 2), 16) * (1 - t) + parseInt(b.slice(k, k + 2), 16) * t);
   return `rgb(${channel(1)}, ${channel(3)}, ${channel(5)})`;
 }
@@ -140,9 +142,9 @@ function addBasemap() {
 
 function markerStyle(station) {
   if (station.free_bikes === 0) {
-    return { radius: 8, color: "#222", weight: 2, dashArray: "3 3", fillColor: "#fff", fillOpacity: 1 };
+    return { radius: 8, color: "#222", weight: 2, dashArray: "3 3", fillColor: BIKE_SCALE[0], fillOpacity: 1 };
   }
-  const fill = station.frac_full == null ? "#999" : viridis(station.frac_full);
+  const fill = station.frac_full == null ? "#999" : bikeColor(station.frac_full);
   return { radius: 8, color: "#fff", weight: 1.5, fillColor: fill, fillOpacity: 0.95 };
 }
 
@@ -256,8 +258,8 @@ function renderHeatmap(heatmap) {
     x: x,
     y: heatmap.names,
     zmin: 0, zmax: 1,
-    // Viridis: dark purple = rarely empty, bright yellow = often empty.
-    colorscale: VIRIDIS.map((c, i) => [i / (VIRIDIS.length - 1), c]),
+    // Same colors as the map, reversed: green = rarely empty, red = often empty.
+    colorscale: [...BIKE_SCALE].reverse().map((c, i) => [i / (BIKE_SCALE.length - 1), c]),
     colorbar: { title: { text: "Share empty" }, tickformat: ".0%" },
     hoverongaps: false,
     hovertemplate: "%{y}<br>%{x}<br>%{z:.0%} of polls had 0 bikes<extra></extra>",
