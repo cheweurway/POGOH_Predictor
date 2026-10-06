@@ -4,9 +4,23 @@
 // draws four views: a station map (Leaflet over an OpenFreeMap background), one
 // station's history, a stockout heatmap, and collection health (Plotly).
 //
+// Two layers of data:
+// - The build (data/*.json, rebuilt on a schedule) has the history: charts,
+//   heatmap, health, and a snapshot of every station.
+// - The live layer reads the newest poll file straight from the repository's
+//   public `data` branch on GitHub, so the map is as fresh as the collector.
+//   It never calls the bike share API itself, so visitors add no load there.
+// The map shows whichever of the two is newer.
+//
 // Times from the build are either UTC ISO strings (ending in +00:00) or
 // Pittsburgh wall-clock strings without an offset (t_local, hours_local).
 // Wall-clock strings go to Plotly as they are, so charts show local time.
+//
+// Test switches in the page address:
+//   ?live=off               never use the live layer (shows the build only)
+//   ?live_date=2026-10-07   pretend today (UTC) is that date, to test the
+//                           fallback to the previous day's folder
+//   ?basemap=osm            use OpenStreetMap tiles instead of OpenFreeMap
 
 "use strict";
 
@@ -23,9 +37,25 @@ const BIKE_SCALE = ["#fee08b", "#d9ef8b", "#91cf60", "#1a9850"];
 const HEATMAP_SCALE = ["#1a9850", "#91cf60", "#fee08b", "#fc8d59", "#d73027"];
 const DEFAULT_STATION_MATCH = "TCS Hall";
 
+// Live layer settings.
+const REPO = "cheweurway/POGOH_Predictor";
+const DATA_BRANCH = "data";
+const LIVE_EVERY_MS = 5 * 60 * 1000;      // check for a newer poll this often
+const HISTORY_EVERY_MS = 10 * 60 * 1000;  // reload the built charts this often
+const STALE_MINUTES = 20;                 // header turns amber past this age
+const MAX_FILES_TRIED = 5;                // newest files to try for a successful poll
+const PARAMS = new URLSearchParams(location.search);
+
 const state = {
   map: null, basemap: null, basemapKind: null, markers: {}, stations: [], selected: null,
   heatmap: null, heatmapShowAll: false,
+  latestPollUtc: null,         // time of the poll the map is showing
+  latestSource: null,          // "build" or "live"
+  live: { mode: "checking" },  // checking, live, off, paused, nodata, error, unsupported
+  liveBusy: false,
+  lastLiveCheck: 0,
+  lastHistory: 0,
+  drawProblems: [],
 };
 
 // ---------- small helpers ----------
@@ -89,20 +119,47 @@ function baseLayout(extra) {
 
 const PLOT_CONFIG = { responsive: true, displayModeBar: false };
 
-// ---------- header ----------
+// ---------- header and footer ----------
 
-function renderStatus(meta) {
+// "10:42 PM" from milliseconds since 1970.
+function formatClock(ms) {
+  return new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit" }).format(new Date(ms));
+}
+
+// Footer line and the gap-rule numbers in the notes, from meta.json.
+function renderMeta(meta) {
+  document.getElementById("built-at").textContent = meta.first_poll_utc
+    ? `Page data built ${formatUtc(meta.built_at_utc)}. ${meta.n_polls_ok} successful polls since ${formatUtc(meta.first_poll_utc)}.`
+    : `Page data built ${formatUtc(meta.built_at_utc)}.`;
+  document.querySelectorAll(".gap-minutes").forEach((el) => { el.textContent = meta.gap_minutes; });
+}
+
+// The status box in the header. Called whenever something changes and once a
+// minute, so "N min ago" stays current.
+function updateStatus() {
   const status = document.getElementById("status");
-  if (!meta.last_poll_utc) {
+  if (!state.latestPollUtc) {
     status.textContent = "No data yet.";
     return;
   }
-  const ago = minutesAgo(meta.last_poll_utc);
-  status.textContent = `Data as of ${formatUtc(meta.last_poll_utc)} (${ago} min ago)`;
-  status.classList.toggle("stale", ago > 20);
-  document.getElementById("built-at").textContent =
-    `Page data built ${formatUtc(meta.built_at_utc)}. ${meta.n_polls_ok} successful polls since ${formatUtc(meta.first_poll_utc)}.`;
-  document.querySelectorAll(".gap-minutes").forEach((el) => { el.textContent = meta.gap_minutes; });
+  const ago = minutesAgo(state.latestPollUtc);
+  const when = `${formatUtc(state.latestPollUtc)} (${ago} min ago)`;
+  const live = state.live;
+  let text;
+  if (live.mode === "live") {
+    text = `Live: last poll ${when}`;
+  } else {
+    text = `Data as of ${when}.`;
+    if (live.mode === "checking") text += " Checking for newer data...";
+    else if (live.mode === "off") text += " Live updates off.";
+    else if (live.mode === "paused") text += ` Live updates paused until ${formatClock(live.pausedUntil)} (GitHub rate limit).`;
+    else text += " Live updates unavailable right now.";
+  }
+  if (state.drawProblems.length) {
+    text += ` Problem drawing: ${state.drawProblems.join(", ")} (see browser console).`;
+  }
+  status.textContent = text;
+  status.classList.toggle("stale", ago > STALE_MINUTES || state.drawProblems.length > 0);
 }
 
 // ---------- map ----------
@@ -182,12 +239,14 @@ function renderMap(stations) {
     if (!marker) {
       marker = L.circleMarker([station.lat, station.lon], markerStyle(station)).addTo(state.map);
       marker.on("click", () => selectStation(station.station_id));
+      marker.bindPopup(popupHtml(station));
+      marker.bindTooltip(escapeHtml(station.name));
       state.markers[station.station_id] = marker;
     } else {
+      // Update in place, so a popup that is open shows the new numbers.
       marker.setStyle(markerStyle(station));
+      marker.setPopupContent(popupHtml(station));
     }
-    marker.bindPopup(popupHtml(station));
-    marker.bindTooltip(escapeHtml(station.name));
   }
 }
 
@@ -235,6 +294,7 @@ async function selectStation(stationId) {
     });
   }
   Plotly.react(chart, traces, baseLayout({
+    uirevision: stationId,  // keep the user's zoom when the same station refreshes
     yaxis: { title: { text: "Bikes available" }, rangemode: "tozero", gridcolor: cssVar("--grid") },
     xaxis: { gridcolor: cssVar("--grid") },
   }), PLOT_CONFIG);
@@ -322,6 +382,172 @@ function renderHealth(health) {
   }
 }
 
+// ---------- live layer ----------
+
+class RateLimited extends Error {
+  constructor(resetMs) {
+    super("GitHub rate limit");
+    this.resetMs = resetMs;
+  }
+}
+
+// Poll files live in raw/YYYY/MM/DD/ by UTC date.
+function dayFolder(date) {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
+  return `raw/${y}/${m}/${d}`;
+}
+
+// Today's folder and yesterday's. Midnight UTC is 8 PM in Pittsburgh (7 PM
+// in winter), and for a few minutes after it today's folder does not exist
+// yet, so yesterday's is the fallback.
+function liveFolders() {
+  const forced = PARAMS.get("live_date");
+  const today = forced ? new Date(`${forced}T12:00:00Z`) : new Date();
+  if (Number.isNaN(today.getTime())) throw new Error(`live_date "${forced}" is not a date`);
+  return [dayFolder(today), dayFolder(new Date(today.getTime() - 24 * 60 * 60 * 1000))];
+}
+
+// List one day's poll files, newest first. A missing folder means no polls
+// that day yet. GitHub allows 60 listing requests per hour per network
+// address; when that runs out it answers 403 or 429, which becomes
+// RateLimited with GitHub's reset time.
+async function listPollFiles(folder) {
+  const response = await fetch(`https://api.github.com/repos/${REPO}/contents/${folder}?ref=${DATA_BRANCH}`);
+  if (response.status === 404) return [];
+  if (response.status === 403 || response.status === 429) {
+    const reset = Number(response.headers.get("x-ratelimit-reset"));
+    const retryAfter = Number(response.headers.get("retry-after"));
+    if (response.headers.get("x-ratelimit-remaining") === "0" && reset) throw new RateLimited(reset * 1000);
+    if (retryAfter) throw new RateLimited(Date.now() + retryAfter * 1000);
+  }
+  if (!response.ok) throw new Error(`GitHub listing: HTTP ${response.status}`);
+  const entries = await response.json();
+  return entries
+    .filter((entry) => entry.type === "file" && entry.name.endsWith(".json.gz"))
+    .sort((a, b) => (a.name < b.name ? 1 : -1));  // names sort by time
+}
+
+// Download one poll file and unzip it in the browser. GitHub serves it as
+// plain bytes; the gzip check also copes if a server ever unzips it first.
+async function readPollRecord(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`poll file: HTTP ${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let text;
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    text = await new Response(stream).text();
+  } else {
+    text = new TextDecoder().decode(bytes);
+  }
+  return JSON.parse(text);
+}
+
+// The raw API response in a poll file, in the same shape as stations.json.
+function stationsFromRecord(record) {
+  return record.payload.network.stations.map((s) => {
+    const extra = s.extra || {};
+    const capacity = s.free_bikes + s.empty_slots;
+    return {
+      station_id: s.id,
+      name: s.name,
+      lat: s.latitude,
+      lon: s.longitude,
+      free_bikes: s.free_bikes,
+      normal_bikes: extra.normal_bikes ?? null,
+      ebikes: extra.ebikes ?? null,
+      empty_slots: s.empty_slots,
+      capacity: capacity,
+      frac_full: capacity ? s.free_bikes / capacity : null,
+      t_utc: record.polled_at_utc,
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Show a set of stations on the map if it is newer than what is showing.
+function showIfNewer(stations, polledAtUtc, source) {
+  if (state.latestPollUtc && new Date(polledAtUtc) <= new Date(state.latestPollUtc)) return;
+  state.stations = stations;
+  state.latestPollUtc = polledAtUtc;
+  state.latestSource = source;
+  renderMap(stations);
+}
+
+async function checkLive() {
+  if (PARAMS.get("live") === "off") {
+    state.live = { mode: "off" };
+    updateStatus();
+    return;
+  }
+  if (state.live.mode === "paused" && Date.now() < state.live.pausedUntil) return;
+  if (typeof DecompressionStream !== "function") {
+    state.live = { mode: "unsupported" };  // very old browser
+    updateStatus();
+    return;
+  }
+  if (state.liveBusy) return;
+  state.liveBusy = true;
+  state.lastLiveCheck = Date.now();
+  try {
+    for (const folder of liveFolders()) {
+      const files = await listPollFiles(folder);
+      for (const file of files.slice(0, MAX_FILES_TRIED)) {
+        const record = await readPollRecord(file.download_url);
+        if (record.ok) {
+          showIfNewer(stationsFromRecord(record), record.polled_at_utc, "live");
+          state.live = { mode: "live", folder: folder, file: file.name };
+          return;
+        }
+      }
+    }
+    state.live = { mode: "nodata" };
+  } catch (error) {
+    if (error instanceof RateLimited) {
+      state.live = { mode: "paused", pausedUntil: error.resetMs };
+    } else {
+      state.live = { mode: "error", detail: error.message };
+      console.warn("Dashboard: live update failed", error);
+    }
+  } finally {
+    state.liveBusy = false;
+    updateStatus();
+  }
+}
+
+// Reload the built charts (they are rebuilt on a schedule) without
+// reloading the page. The heatmap's show-all choice and the history chart's
+// zoom are kept.
+async function refreshHistory() {
+  state.lastHistory = Date.now();
+  try {
+    const [meta, heatmap, health] = await Promise.all([
+      fetchJSON("meta.json"), fetchJSON("heatmap.json"), fetchJSON("health.json"),
+    ]);
+    renderMeta(meta);
+    renderHeatmap(heatmap);
+    renderHealth(health);
+    if (meta.last_poll_utc && (!state.latestPollUtc || new Date(meta.last_poll_utc) > new Date(state.latestPollUtc))) {
+      showIfNewer(await fetchJSON("stations.json"), meta.last_poll_utc, "build");
+    }
+    if (state.selected) selectStation(state.selected);
+  } catch (error) {
+    console.warn("Dashboard: refreshing charts failed", error);
+  }
+  updateStatus();
+}
+
+// Runs once a minute and when the tab becomes visible again. Nothing is
+// fetched while the tab is hidden.
+function tick() {
+  updateStatus();
+  if (document.visibilityState !== "visible") return;
+  const now = Date.now();
+  if (now - state.lastLiveCheck >= LIVE_EVERY_MS) checkLive();
+  if (now - state.lastHistory >= HISTORY_EVERY_MS) refreshHistory();
+}
+
 // ---------- start ----------
 
 async function init() {
@@ -337,18 +563,21 @@ async function init() {
     return;
   }
   state.stations = stations;
+  state.latestPollUtc = meta.last_poll_utc;
+  state.latestSource = "build";
+  state.lastHistory = Date.now();
+
   // Draw each part separately, so one failing part cannot blank the rest.
   // Failures are listed in the status box and the browser console.
-  const failed = [];
   const attempt = (label, draw) => {
     try {
       draw();
     } catch (error) {
-      failed.push(label);
+      state.drawProblems.push(label);
       console.error(`Dashboard: ${label} failed`, error);
     }
   };
-  attempt("header", () => renderStatus(meta));
+  attempt("footer", () => renderMeta(meta));
   attempt("map", () => renderMap(stations));
   attempt("station list", () => renderPicker(stations));
   attempt("heatmap", () => renderHeatmap(heatmap));
@@ -357,10 +586,11 @@ async function init() {
     const preferred = stations.find((s) => s.name.includes(DEFAULT_STATION_MATCH)) || stations[0];
     if (preferred) selectStation(preferred.station_id);
   });
-  if (failed.length) {
-    status.textContent += ` Problem drawing: ${failed.join(", ")} (see browser console).`;
-    status.classList.add("stale");
-  }
+  updateStatus();
+
+  checkLive();
+  setInterval(tick, 60 * 1000);
+  document.addEventListener("visibilitychange", tick);
 }
 
 init();
