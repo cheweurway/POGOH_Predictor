@@ -3,6 +3,9 @@
 data/*
 !data/calendar.csv
 
+# Dashboard build output (published to GitHub Pages, never committed)
+_site/
+
 # Python environment and caches
 .venv/
 __pycache__/
