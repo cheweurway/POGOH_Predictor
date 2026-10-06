@@ -12,7 +12,6 @@
   --warn-bg: #fff4d6;
   --warn-text: #7a4d00;
   --bikes: #2a788e;
-  --docks: #b5651d;
   --failed: #c2410c;
   --grid: #e6e6ea;
 }
@@ -28,7 +27,6 @@
     --warn-bg: #3d2f0a;
     --warn-text: #ffd479;
     --bikes: #5ec2d6;
-    --docks: #f0a35e;
     --failed: #fb923c;
     --grid: #2c2c31;
   }
@@ -44,7 +42,6 @@
   --warn-bg: #3d2f0a;
   --warn-text: #ffd479;
   --bikes: #5ec2d6;
-  --docks: #f0a35e;
   --failed: #fb923c;
   --grid: #2c2c31;
 }

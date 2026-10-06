@@ -215,13 +215,11 @@ async function selectStation(stationId) {
   }
   if (state.selected !== stationId) return;  // the user picked another station meanwhile
 
+  // Bikes available only (the user chose not to show empty docks here).
   const traces = [
-    { x: series.t_local, y: series.free_bikes, name: "Bikes", mode: "lines",
+    { x: series.t_local, y: series.free_bikes, name: "Bikes available", mode: "lines",
       line: { color: cssVar("--bikes"), width: 2 }, connectgaps: false,
       hovertemplate: "%{x|%b %d %I:%M %p}<br>%{y} bikes<extra></extra>" },
-    { x: series.t_local, y: series.empty_slots, name: "Empty docks", mode: "lines",
-      line: { color: cssVar("--docks"), width: 1.5, dash: "dot" }, connectgaps: false,
-      hovertemplate: "%{x|%b %d %I:%M %p}<br>%{y} empty docks<extra></extra>" },
   ];
   if (series.rebalancing.length) {
     traces.push({
@@ -234,7 +232,7 @@ async function selectStation(stationId) {
     });
   }
   Plotly.react(chart, traces, baseLayout({
-    yaxis: { title: { text: "Count" }, rangemode: "tozero", gridcolor: cssVar("--grid") },
+    yaxis: { title: { text: "Bikes available" }, rangemode: "tozero", gridcolor: cssVar("--grid") },
     xaxis: { gridcolor: cssVar("--grid") },
   }), PLOT_CONFIG);
 }
