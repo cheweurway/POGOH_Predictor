@@ -16,11 +16,17 @@ and sorting by name sorts by time.
 """
 
 import gzip
+import io
 import json
+import subprocess
+import tarfile
 from datetime import datetime
 from pathlib import Path
 
 from pogoh.collect import record_failure, store_snapshot
+from pogoh.db import PROJECT_ROOT
+
+DATA_REF = "refs/remotes/origin/data"  # the data branch after `git fetch origin data`
 
 
 def record_relpath(polled_at_utc):
@@ -53,6 +59,26 @@ def write_record(root, record):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(encode_record(record))
     return path
+
+
+def git(*args, repo=PROJECT_ROOT):
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True).stdout
+
+
+def read_records_from_branch(ref=DATA_REF, repo=PROJECT_ROOT):
+    """Yield every record stored under raw/ on a git branch.
+
+    Reads straight from git with `git archive`, so nothing is checked out.
+    The branch must already be fetched (for example `git fetch origin data`).
+    """
+    tree = git("ls-tree", "--name-only", ref, repo=repo).decode().split()
+    if "raw" not in tree:
+        return  # branch exists but has no polls yet
+    archive = git("archive", "--format=tar", ref, "raw", repo=repo)
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
+        for member in tar:
+            if member.isfile() and member.name.endswith(".json.gz"):
+                yield decode_record(tar.extractfile(member).read())
 
 
 def latest_success_time(root):

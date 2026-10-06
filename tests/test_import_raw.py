@@ -6,14 +6,10 @@ import subprocess
 from pathlib import Path
 
 from pogoh.db import connect
-from pogoh.raw import import_records, make_record, write_record
+from pogoh.raw import import_records, make_record, read_records_from_branch, write_record
 
 FIXTURE = Path(__file__).parent / "fixtures" / "snapshot_sample.json"
-
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "import_raw.py"
-_spec = importlib.util.spec_from_file_location("import_raw", _SCRIPT)
-import_raw = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(import_raw)
 
 
 def _git(repo, *args):
@@ -42,7 +38,7 @@ def test_reads_all_records_from_the_branch(tmp_path):
     ]
     repo = _make_repo(tmp_path, records)
 
-    found = list(import_raw.read_records_from_branch("data", repo=repo))
+    found = list(read_records_from_branch("data", repo=repo))
 
     assert sorted(found, key=lambda r: r["polled_at_utc"]) == records
     conn = connect(":memory:")
@@ -51,4 +47,12 @@ def test_reads_all_records_from_the_branch(tmp_path):
 
 def test_branch_without_records_yields_nothing(tmp_path):
     repo = _make_repo(tmp_path, [])
-    assert list(import_raw.read_records_from_branch("data", repo=repo)) == []
+    assert list(read_records_from_branch("data", repo=repo)) == []
+
+
+def test_import_script_still_loads():
+    """The script now imports the reader from pogoh.raw; make sure that works."""
+    spec = importlib.util.spec_from_file_location("import_raw", _SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.read_records_from_branch is read_records_from_branch

@@ -8,7 +8,7 @@ What it does:
 1. `git fetch origin data` to download new records from GitHub.
 2. Reads every raw/... file straight from the fetched branch with
    `git archive`, so nothing is checked out and your working folder is
-   untouched.
+   untouched (see pogoh.raw.read_records_from_branch).
 3. Loads records into data/pogoh.db. Polls already in the database are
    skipped, so it is safe to run as often as you like.
 
@@ -16,35 +16,13 @@ Use --no-fetch to import from what was fetched last time (works offline).
 """
 
 import argparse
-import io
-import subprocess
 import sys
-import tarfile
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from pogoh.db import DEFAULT_DB_PATH, connect  # noqa: E402
-from pogoh.raw import decode_record, import_records  # noqa: E402
-
-DATA_REF = "refs/remotes/origin/data"
-
-
-def git(*args, repo=PROJECT_ROOT):
-    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True).stdout
-
-
-def read_records_from_branch(ref=DATA_REF, repo=PROJECT_ROOT):
-    """Yield every record stored under raw/ on the given branch."""
-    tree = git("ls-tree", "--name-only", ref, repo=repo).decode().split()
-    if "raw" not in tree:
-        return  # branch exists but has no polls yet
-    archive = git("archive", "--format=tar", ref, "raw", repo=repo)
-    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
-        for member in tar:
-            if member.isfile() and member.name.endswith(".json.gz"):
-                yield decode_record(tar.extractfile(member).read())
+from pogoh.raw import git, import_records, read_records_from_branch  # noqa: E402
 
 
 def main():
