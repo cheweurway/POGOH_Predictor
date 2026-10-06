@@ -27,13 +27,17 @@
   <main>
     <section aria-labelledby="map-title">
       <h2 id="map-title">Stations now</h2>
-      <p class="note">Color shows how full each station is (bikes as a share of bikes plus empty docks), from red (no bikes) to green (full). Red circles with a dashed outline have no bikes at all. Click a station for details and its history below.</p>
+      <p class="note">Color shows how full each station is (bikes as a share of bikes plus empty docks). Red circles with a dashed outline have no bikes. Stations with bikes go from yellow (a few bikes for their size) to green (full). Click a station for details and its history below.</p>
       <div id="map" aria-label="Map of POGOH stations"></div>
       <div class="legend" aria-hidden="true">
-        <span class="legend-item"><span class="swatch empty"></span>0 bikes</span>
+        <span class="legend-item">
+          <!-- Drawn like the map's empty-station circle: red fill, dashed dark outline. -->
+          <svg class="swatch" viewBox="0 0 18 18"><circle cx="9" cy="9" r="7" fill="#d73027" stroke="#222" stroke-width="2" stroke-dasharray="3 3"/></svg>
+          No bikes
+        </span>
         <span class="legend-scale">
           <span class="legend-bar"></span>
-          <span class="legend-ends"><span>no bikes</span><span>full of bikes</span></span>
+          <span class="legend-ends"><span>a few bikes</span><span>full of bikes</span></span>
         </span>
       </div>
     </section>

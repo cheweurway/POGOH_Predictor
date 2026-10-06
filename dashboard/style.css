@@ -1,7 +1,7 @@
 /* Colors are tokens so light and dark mode stay consistent; app.js reads
-   some of them for the charts. The station scale runs red (no bikes) to
-   yellow to green (full); empty stations also get a dashed outline so they
-   stand out without relying on color alone. */
+   some of them for the charts. On the map, stations with 0 bikes are red with
+   a dashed outline (so they stand out without relying on color alone), and
+   stations with bikes run from yellow (few) to green (full). */
 :root {
   --bg: #f7f7f5;
   --surface: #ffffff;
@@ -112,14 +112,11 @@ section {
   color: var(--muted);
 }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }
-.swatch.empty {
-  width: 14px; height: 14px; border-radius: 50%;
-  background: #d73027; border: 2px dashed #222;
-}
+.swatch { width: 18px; height: 18px; flex: none; }
 .legend-scale { display: inline-flex; flex-direction: column; width: 180px; }
 .legend-bar {
   height: 10px; border-radius: 5px;
-  background: linear-gradient(to right, #d73027, #fc8d59, #fee08b, #91cf60, #1a9850);
+  background: linear-gradient(to right, #fee08b, #d9ef8b, #91cf60, #1a9850);
 }
 .legend-ends { display: flex; justify-content: space-between; }
 

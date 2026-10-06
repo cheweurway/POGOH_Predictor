@@ -13,10 +13,14 @@
 const TZ = "America/New_York";
 const DATA_DIR = "data/";
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-// Red to yellow to green: red = no bikes, green = full of bikes. The same
-// stops as the legend gradient in style.css. Empty stations also get a
-// dashed outline, so they stand out without relying on color alone.
-const BIKE_SCALE = ["#d73027", "#fc8d59", "#fee08b", "#91cf60", "#1a9850"];
+// Map colors. A station with 0 bikes is red with a dashed outline (the
+// outline means it does not rely on color alone). A station with at least
+// one bike runs from yellow (few bikes for its size) to green (full). The
+// yellow-to-green stops match the legend gradient in style.css.
+const EMPTY_COLOR = "#d73027";
+const BIKE_SCALE = ["#fee08b", "#d9ef8b", "#91cf60", "#1a9850"];
+// Heatmap colors: green = rarely empty, through yellow, to red = often empty.
+const HEATMAP_SCALE = ["#1a9850", "#91cf60", "#fee08b", "#fc8d59", "#d73027"];
 const DEFAULT_STATION_MATCH = "TCS Hall";
 
 const state = { map: null, basemap: null, basemapKind: null, markers: {}, stations: [], selected: null };
@@ -54,7 +58,7 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-// Interpolate the bike scale at f in [0, 1] (0 = red, 1 = green).
+// Interpolate the bike scale at f in [0, 1] (0 = yellow, 1 = green).
 function bikeColor(f) {
   const x = Math.min(1, Math.max(0, f)) * (BIKE_SCALE.length - 1);
   const i = Math.min(BIKE_SCALE.length - 2, Math.floor(x));
@@ -142,7 +146,7 @@ function addBasemap() {
 
 function markerStyle(station) {
   if (station.free_bikes === 0) {
-    return { radius: 8, color: "#222", weight: 2, dashArray: "3 3", fillColor: BIKE_SCALE[0], fillOpacity: 1 };
+    return { radius: 8, color: "#222", weight: 2, dashArray: "3 3", fillColor: EMPTY_COLOR, fillOpacity: 1 };
   }
   const fill = station.frac_full == null ? "#999" : bikeColor(station.frac_full);
   return { radius: 8, color: "#fff", weight: 1.5, fillColor: fill, fillOpacity: 0.95 };
@@ -258,8 +262,7 @@ function renderHeatmap(heatmap) {
     x: x,
     y: heatmap.names,
     zmin: 0, zmax: 1,
-    // Same colors as the map, reversed: green = rarely empty, red = often empty.
-    colorscale: [...BIKE_SCALE].reverse().map((c, i) => [i / (BIKE_SCALE.length - 1), c]),
+    colorscale: HEATMAP_SCALE.map((c, i) => [i / (HEATMAP_SCALE.length - 1), c]),
     colorbar: { title: { text: "Share empty" }, tickformat: ".0%" },
     hoverongaps: false,
     hovertemplate: "%{y}<br>%{x}<br>%{z:.0%} of polls had 0 bikes<extra></extra>",
