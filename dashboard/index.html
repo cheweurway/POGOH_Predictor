@@ -53,8 +53,9 @@
 
     <section aria-labelledby="heatmap-title">
       <h2 id="heatmap-title">When stations run out of bikes</h2>
-      <p class="note">Share of polls with 0 bikes, by station and hour of the week (Pittsburgh time). Blank cells have fewer than 3 polls. Stations with the highest overall share are at the top. Counts are polls, not minutes.</p>
+      <p class="note">Share of polls with 0 bikes, by station and hour of the day (Pittsburgh time, all days combined). Green means the station rarely ran out at that hour, red means it often did. Blank cells have fewer than 3 polls. The stations that run out most often are at the top. Counts are polls, not minutes.</p>
       <div id="heatmap-chart" class="chart"></div>
+      <button type="button" id="heatmap-toggle" class="toggle" hidden>Show all stations</button>
     </section>
 
     <section aria-labelledby="health-title">

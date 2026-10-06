@@ -12,7 +12,7 @@
 
 const TZ = "America/New_York";
 const DATA_DIR = "data/";
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const HEATMAP_TOP = 20;  // rows shown before "Show all stations"
 // Map colors. A station with 0 bikes is red with a dashed outline (the
 // outline means it does not rely on color alone). A station with at least
 // one bike runs from yellow (few bikes for its size) to green (full). The
@@ -23,7 +23,10 @@ const BIKE_SCALE = ["#fee08b", "#d9ef8b", "#91cf60", "#1a9850"];
 const HEATMAP_SCALE = ["#1a9850", "#91cf60", "#fee08b", "#fc8d59", "#d73027"];
 const DEFAULT_STATION_MATCH = "TCS Hall";
 
-const state = { map: null, basemap: null, basemapKind: null, markers: {}, stations: [], selected: null };
+const state = {
+  map: null, basemap: null, basemapKind: null, markers: {}, stations: [], selected: null,
+  heatmap: null, heatmapShowAll: false,
+};
 
 // ---------- small helpers ----------
 
@@ -239,37 +242,56 @@ async function selectStation(stationId) {
 
 // ---------- heatmap ----------
 
-function hourLabel(h) {
-  const day = DAYS[Math.floor(h / 24)];
-  const hour = h % 24;
-  const label = hour === 0 ? "12 AM" : hour < 12 ? `${hour} AM` : hour === 12 ? "12 PM" : `${hour - 12} PM`;
-  return `${day} ${label}`;
+// "12 AM", "1 AM", ... "11 PM" for hours 0 to 23.
+function hourLabel(hour) {
+  if (hour === 0) return "12 AM";
+  if (hour < 12) return `${hour} AM`;
+  if (hour === 12) return "12 PM";
+  return `${hour - 12} PM`;
 }
 
+// Stations x hour of day. Rows come sorted with the most often empty first,
+// so showing the first HEATMAP_TOP rows shows the stations that matter most.
+// The button below the chart switches between the top rows and all of them.
 function renderHeatmap(heatmap) {
   const chart = document.getElementById("heatmap-chart");
+  const button = document.getElementById("heatmap-toggle");
   if (!heatmap.station_ids.length) {
     chart.textContent = "No data yet.";
+    button.hidden = true;
     return;
   }
-  const x = Array.from({ length: 168 }, (_, h) => hourLabel(h));
-  const rows = heatmap.station_ids.length;
+  state.heatmap = heatmap;
+  const total = heatmap.station_ids.length;
+  const rows = state.heatmapShowAll ? total : Math.min(HEATMAP_TOP, total);
+  const x = heatmap.hours.map(hourLabel);
+  const noGrid = { showgrid: false, zeroline: false };
   Plotly.react(chart, [{
     type: "heatmap",
-    z: heatmap.z,
+    z: heatmap.z.slice(0, rows),
     x: x,
-    y: heatmap.names,
+    y: heatmap.names.slice(0, rows),
     zmin: 0, zmax: 1,
+    xgap: 1, ygap: 1,  // thin gaps between cells instead of grid lines
     colorscale: HEATMAP_SCALE.map((c, i) => [i / (HEATMAP_SCALE.length - 1), c]),
-    colorbar: { title: { text: "Share empty" }, tickformat: ".0%" },
+    colorbar: { title: { text: "Share empty" }, tickformat: ".0%", thickness: 12 },
     hoverongaps: false,
     hovertemplate: "%{y}<br>%{x}<br>%{z:.0%} of polls had 0 bikes<extra></extra>",
   }], baseLayout({
-    height: Math.max(360, rows * 16 + 120),
-    margin: { l: 230, r: 16, t: 16, b: 60 },
-    xaxis: { tickvals: DAYS.map((_, d) => x[d * 24]), ticktext: DAYS, gridcolor: cssVar("--grid") },
-    yaxis: { autorange: "reversed", automargin: true, tickfont: { size: 10 } },
+    height: rows * 22 + 90,
+    margin: { l: 230, r: 16, t: 8, b: 40 },
+    xaxis: Object.assign({ tickvals: x.filter((_, h) => h % 3 === 0), side: "bottom" }, noGrid),
+    yaxis: Object.assign({ autorange: "reversed", automargin: true, tickfont: { size: 11 } }, noGrid),
   }), PLOT_CONFIG);
+
+  button.hidden = total <= HEATMAP_TOP;
+  button.textContent = state.heatmapShowAll
+    ? `Show top ${HEATMAP_TOP} stations`
+    : `Show all ${total} stations`;
+  button.onclick = () => {
+    state.heatmapShowAll = !state.heatmapShowAll;
+    renderHeatmap(state.heatmap);
+  };
 }
 
 // ---------- collection health ----------

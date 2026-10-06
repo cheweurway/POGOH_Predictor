@@ -17,7 +17,7 @@ Output layout (everything the browser needs, nothing else):
     <out>/index.html, style.css, app.js   copied from dashboard/ if present
     <out>/data/meta.json                  counts, timestamps, credits
     <out>/data/stations.json              newest state of every station
-    <out>/data/heatmap.json               stockout share by station and hour of week
+    <out>/data/heatmap.json               stockout share by station and hour of day
     <out>/data/health.json                polls per hour and the gap list
     <out>/data/series/<station_id>.json   one station's history and rebalancing events
 
