@@ -14,7 +14,10 @@ never writes to the branch.
 
 Output layout (everything the browser needs, nothing else):
 
-    <out>/index.html, style.css, app.js   copied from dashboard/ if present
+    <out>/index.html, style.css, app.js   copied from dashboard/ if present; the
+                                          page links to style.css and app.js with
+                                          ?v=<content hash> so browsers never use
+                                          a stale copy after an update
     <out>/data/meta.json                  counts, timestamps, credits
     <out>/data/stations.json              newest state of every station
     <out>/data/empty_full_24h.json        share of the last 24 hours each station was empty or full
@@ -27,6 +30,7 @@ survive. Nothing outside <out> is touched.
 """
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -50,6 +54,21 @@ def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     # allow_nan=False: NaN is not valid JSON and would break the browser.
     path.write_text(json.dumps(value, separators=(",", ":"), allow_nan=False), encoding="utf-8")
+
+
+def add_version_tags(html, out):
+    """Point the page's links to style.css and app.js at ?v=<content hash>.
+
+    Browsers and GitHub Pages cache these files, so after an update a
+    visitor could get the new page with the old style or script. A link
+    that changes whenever the file changes forces a fresh download.
+    """
+    for name, attr in (("style.css", "href"), ("app.js", "src")):
+        path = Path(out) / name
+        if path.exists():
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()[:10]
+            html = html.replace(f'{attr}="{name}"', f'{attr}="{name}?v={digest}"')
+    return html
 
 
 def open_source(args):
@@ -110,6 +129,9 @@ def build(conn, out, site_dir=DEFAULT_SITE_DIR, built_at=None):
             if path.is_file():
                 shutil.copy2(path, out / path.name)
                 copied.append(path.name)
+    index = out / "index.html"
+    if index.exists():
+        index.write_text(add_version_tags(index.read_text(encoding="utf-8"), out), encoding="utf-8")
 
     return {"stations": len(series), "polls": len(polls), "observations": len(obs), "static_files": copied}
 

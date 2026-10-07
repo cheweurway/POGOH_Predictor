@@ -88,6 +88,24 @@ def test_static_files_are_copied(tmp_path, db_path):
     assert (out / "index.html").read_text() == "<!doctype html><title>t</title>"
 
 
+def test_page_links_carry_a_content_hash(tmp_path, db_path):
+    site = tmp_path / "dashboard"
+    site.mkdir()
+    (site / "index.html").write_text('<link href="style.css"><script src="app.js"></script>')
+    (site / "style.css").write_text("body {}")
+    (site / "app.js").write_text("1;")
+    out = tmp_path / "site"
+    build_dashboard.main(["--db", str(db_path), "--out", str(out), "--site-dir", str(site)])
+    first = (out / "index.html").read_text()
+    assert 'href="style.css?v=' in first and 'src="app.js?v=' in first
+
+    (site / "style.css").write_text("body { color: red }")
+    build_dashboard.main(["--db", str(db_path), "--out", str(out), "--site-dir", str(site)])
+    second = (out / "index.html").read_text()
+    assert second != first  # a changed stylesheet gets a new link
+    assert second.split("app.js")[1] == first.split("app.js")[1]  # unchanged script keeps its link
+
+
 def test_missing_database_gives_a_clear_error(tmp_path):
     with pytest.raises(SystemExit, match="import_raw"):
         build_dashboard.main(["--db", str(tmp_path / "nope.db"), "--out", str(tmp_path / "site")])
