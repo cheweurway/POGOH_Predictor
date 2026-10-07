@@ -356,6 +356,13 @@ function sharePopupHtml(row) {
       Its history is now in the chart above.</div>`;
 }
 
+// Hover label: the station and both shares, e.g. "Empty 51% · Full 0%".
+function shareTooltipHtml(row) {
+  const note = row.category === "insufficient" ? " (not enough data)" : "";
+  return `<strong>${escapeHtml(row.name)}</strong><br>
+    Empty ${percent(row.empty_share)} · Full ${percent(row.full_share)}${note}`;
+}
+
 // Grey and hollow circles are added first, so red and blue ones sit on top
 // where stations are close together.
 const SHARE_DRAW_ORDER = { insufficient: 0, neither: 1, full: 2, empty: 2 };
@@ -373,7 +380,7 @@ function renderShareMap(shares) {
   for (const row of located) {
     let marker = state.shareMarkers[row.station_id];
     const style = shareStyle(row, shares.quiet_share);
-    const tooltip = `${escapeHtml(row.name)}: ${SHARE_HEADLINE[row.category].toLowerCase()}`;
+    const tooltip = shareTooltipHtml(row);
     if (!marker) {
       marker = L.circleMarker([row.lat, row.lon], style).addTo(state.shareMap);
       marker.on("click", () => selectStation(row.station_id));
