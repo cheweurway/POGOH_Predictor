@@ -93,7 +93,7 @@ section {
   margin: 16px 0;
 }
 
-#map {
+.map {
   height: min(60vh, 520px);
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -115,6 +115,8 @@ section {
   height: 10px; border-radius: 5px;
   background: linear-gradient(to right, #fee08b, #d9ef8b, #91cf60, #1a9850);
 }
+.legend-bar-empty { background: linear-gradient(to right, #f4a582, #d73027, #a50026); }
+.legend-bar-full { background: linear-gradient(to right, #92c5de, #4575b4, #313695); }
 .legend-ends { display: flex; justify-content: space-between; }
 
 .picker { display: inline-flex; gap: 8px; align-items: center; margin-bottom: 8px; }

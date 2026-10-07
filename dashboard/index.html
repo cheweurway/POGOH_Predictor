@@ -28,7 +28,7 @@
     <section aria-labelledby="map-title">
       <h2 id="map-title">Stations now</h2>
       <p class="note">Color shows how full each station is (bikes as a share of bikes plus empty docks). Red circles with a dashed outline have no bikes. Stations with bikes go from yellow (a few bikes for their size) to green (full). Click a station for details and its history below.</p>
-      <div id="map" aria-label="Map of POGOH stations"></div>
+      <div id="map" class="map" aria-label="Map of POGOH stations"></div>
       <div class="legend" aria-hidden="true">
         <span class="legend-item">
           <!-- Drawn like the map's empty-station circle: red fill, dashed dark outline. -->
@@ -49,6 +49,30 @@
       </label>
       <div id="series-chart" class="chart"></div>
       <p class="note">Breaks in the line are gaps of more than <span class="gap-minutes">10</span> minutes with no data; nothing is filled in. Diamonds mark suspected rebalancing: 5 or more bikes added or removed between two polls.</p>
+    </section>
+
+    <section aria-labelledby="share-title">
+      <h2 id="share-title">Empty or full in the last 24 hours</h2>
+      <p class="note">How much of <span id="share-window">the last 24 hours</span> each station had no bikes to rent (empty) or no empty docks to return one (full). Red stations were empty more often than full, blue ones full more often than empty, and darker means more of the day. Grey stations were empty and full less than 5% of the time each. Hollow circles have less than 12 hours of data. Click a station for both numbers. Time is measured from poll to poll, and gaps of more than <span class="gap-minutes">10</span> minutes are left out.</p>
+      <div id="share-map" class="map" aria-label="Map of how often each station was empty or full in the last 24 hours"></div>
+      <div class="legend" aria-hidden="true">
+        <span class="legend-scale">
+          <span class="legend-bar legend-bar-empty"></span>
+          <span class="legend-ends"><span>empty 5%</span><span>50%+</span></span>
+        </span>
+        <span class="legend-scale">
+          <span class="legend-bar legend-bar-full"></span>
+          <span class="legend-ends"><span>full 5%</span><span>50%+</span></span>
+        </span>
+        <span class="legend-item">
+          <svg class="swatch" viewBox="0 0 18 18"><circle cx="9" cy="9" r="7" fill="#bdbdbd" stroke="#fff" stroke-width="1.5"/></svg>
+          Rarely either
+        </span>
+        <span class="legend-item">
+          <svg class="swatch" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6" fill="none" stroke="#777" stroke-width="2" stroke-dasharray="2 3"/></svg>
+          Not enough data
+        </span>
+      </div>
     </section>
 
     <section aria-labelledby="heatmap-title">

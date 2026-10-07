@@ -1,8 +1,10 @@
 // POGOH availability dashboard.
 //
 // Reads the JSON files written by scripts/build_dashboard.py (in data/) and
-// draws four views: a station map (Leaflet over an OpenFreeMap background), one
-// station's history, a stockout heatmap, and collection health (Plotly).
+// draws five views: a station map (Leaflet over an OpenFreeMap background), one
+// station's history, a second map of how often each station was empty or
+// full in the last 24 hours, a stockout heatmap, and collection health
+// (Plotly).
 //
 // Two layers of data:
 // - The build (data/*.json, rebuilt on a schedule) has the history: charts,
@@ -33,6 +35,14 @@ const HEATMAP_TOP = 20;  // rows shown before "Show all stations"
 // yellow-to-green stops match the legend gradient in style.css.
 const EMPTY_COLOR = "#d73027";
 const BIKE_SCALE = ["#fee08b", "#d9ef8b", "#91cf60", "#1a9850"];
+// Empty-or-full map colors. Red = empty more often than full, blue = full
+// more often, darker = a bigger share of the last 24 hours, reaching the
+// darkest at SHARE_DARKEST. Red and blue are the two ends of a colorblind-safe
+// red-blue palette; the stops match the legend gradients in style.css.
+const SHARE_EMPTY_SCALE = ["#f4a582", "#d73027", "#a50026"];
+const SHARE_FULL_SCALE = ["#92c5de", "#4575b4", "#313695"];
+const SHARE_NEITHER_COLOR = "#bdbdbd";
+const SHARE_DARKEST = 0.5;
 // Heatmap colors: green = rarely empty, through yellow, to red = often empty.
 const HEATMAP_SCALE = ["#1a9850", "#91cf60", "#fee08b", "#fc8d59", "#d73027"];
 const DEFAULT_STATION_MATCH = "TCS Hall";
@@ -47,7 +57,8 @@ const MAX_FILES_TRIED = 5;                // newest files to try for a successfu
 const PARAMS = new URLSearchParams(location.search);
 
 const state = {
-  map: null, basemap: null, basemapKind: null, markers: {}, stations: [], selected: null,
+  map: null, basemapKind: null, markers: {}, stations: [], selected: null,
+  shareMap: null, shareMarkers: {},
   heatmap: null, heatmapShowAll: false,
   latestPollUtc: null,         // time of the poll the map is showing
   latestSource: null,          // "build" or "live"
@@ -91,14 +102,19 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-// Interpolate the bike scale at f in [0, 1] (0 = yellow, 1 = green).
-function bikeColor(f) {
-  const x = Math.min(1, Math.max(0, f)) * (BIKE_SCALE.length - 1);
-  const i = Math.min(BIKE_SCALE.length - 2, Math.floor(x));
+// Interpolate a list of hex colors at f in [0, 1].
+function scaleColor(scale, f) {
+  const x = Math.min(1, Math.max(0, f)) * (scale.length - 1);
+  const i = Math.min(scale.length - 2, Math.floor(x));
   const t = x - i;
-  const a = BIKE_SCALE[i], b = BIKE_SCALE[i + 1];
+  const a = scale[i], b = scale[i + 1];
   const channel = (k) => Math.round(parseInt(a.slice(k, k + 2), 16) * (1 - t) + parseInt(b.slice(k, k + 2), 16) * t);
   return `rgb(${channel(1)}, ${channel(3)}, ${channel(5)})`;
+}
+
+// The bike scale at f in [0, 1] (0 = yellow, 1 = green).
+function bikeColor(f) {
+  return scaleColor(BIKE_SCALE, f);
 }
 
 // Shared Plotly look that follows the page's light or dark colors.
@@ -180,28 +196,40 @@ function webglAvailable() {
   }
 }
 
-function addOsmTiles() {
+function addOsmTiles(map) {
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(state.map);
-  state.basemapKind = "osm";
+  }).addTo(map);
+  return "osm";
 }
 
-function addBasemap() {
-  const forceOsm = new URLSearchParams(location.search).get("basemap") === "osm";
+// Adds the background to `map` and returns which one was used.
+function addBasemap(map) {
+  const forceOsm = PARAMS.get("basemap") === "osm";
   const canUseMapLibre = typeof L.maplibreGL === "function" && window.maplibregl && webglAvailable();
-  if (forceOsm || !canUseMapLibre) {
-    addOsmTiles();
-    return;
-  }
+  if (forceOsm || !canUseMapLibre) return addOsmTiles(map);
   try {
-    state.basemap = L.maplibreGL({ style: OPENFREEMAP_STYLE }).addTo(state.map);
-    state.basemapKind = "openfreemap";
+    L.maplibreGL({ style: OPENFREEMAP_STYLE }).addTo(map);
+    return "openfreemap";
   } catch (error) {
     console.warn("Dashboard: OpenFreeMap failed, using OpenStreetMap tiles", error);
-    addOsmTiles();
+    return addOsmTiles(map);
   }
+}
+
+// A new Leaflet map in the element with id `elementId`, zoomed to fit the
+// stations. The map needs a view (center and zoom) before any background or
+// circle is added; Leaflet cannot place things on a map with no view. So the
+// view is set first, once, and left alone after that.
+function createMap(elementId, located) {
+  const map = L.map(elementId, { scrollWheelZoom: false });
+  if (located.length) {
+    map.fitBounds(L.latLngBounds(located.map((s) => [s.lat, s.lon])), { padding: [20, 20] });
+  } else {
+    map.setView([40.44, -79.96], 12);  // Pittsburgh
+  }
+  return map;
 }
 
 function markerStyle(station) {
@@ -223,16 +251,8 @@ function popupHtml(station) {
 function renderMap(stations) {
   const located = stations.filter((s) => s.lat != null && s.lon != null);
   if (!state.map) {
-    state.map = L.map("map", { scrollWheelZoom: false });
-    // The map needs a view (center and zoom) before any background or circle
-    // is added; Leaflet cannot place things on a map with no view. So zoom to
-    // the stations first, once, and leave the view alone after that.
-    if (located.length) {
-      state.map.fitBounds(L.latLngBounds(located.map((s) => [s.lat, s.lon])), { padding: [20, 20] });
-    } else {
-      state.map.setView([40.44, -79.96], 12);  // Pittsburgh
-    }
-    addBasemap();
+    state.map = createMap("map", located);
+    state.basemapKind = addBasemap(state.map);
   }
   for (const station of located) {
     let marker = state.markers[station.station_id];
@@ -298,6 +318,74 @@ async function selectStation(stationId) {
     yaxis: { title: { text: "Bikes available" }, rangemode: "tozero", gridcolor: cssVar("--grid") },
     xaxis: { gridcolor: cssVar("--grid") },
   }), PLOT_CONFIG);
+}
+
+// ---------- empty or full in the last 24 hours ----------
+
+// "38%" from a share in [0, 1].
+function percent(share) {
+  return share == null ? "?" : `${Math.round(share * 100)}%`;
+}
+
+// Darkness grows from the grey cutoff (quiet_share) to SHARE_DARKEST.
+function shareStyle(row, quiet) {
+  const base = { radius: 8, color: "#fff", weight: 1.5, fillOpacity: 0.95 };
+  if (row.category === "insufficient") {
+    return { radius: 7, color: "#777", weight: 2, dashArray: "2 3", fillOpacity: 0 };
+  }
+  if (row.category === "neither") return Object.assign(base, { fillColor: SHARE_NEITHER_COLOR });
+  const empty = row.category === "empty";
+  const share = empty ? row.empty_share : row.full_share;
+  const f = (share - quiet) / (SHARE_DARKEST - quiet);
+  return Object.assign(base, { fillColor: scaleColor(empty ? SHARE_EMPTY_SCALE : SHARE_FULL_SCALE, f) });
+}
+
+const SHARE_HEADLINE = {
+  empty: "Empty more often than full",
+  full: "Full more often than empty",
+  neither: "Rarely empty or full",
+  insufficient: "Not enough data",
+};
+
+function sharePopupHtml(row) {
+  return `<h3>${escapeHtml(row.name)}</h3>
+    <div><strong>${SHARE_HEADLINE[row.category]}</strong></div>
+    <div>No bikes: ${percent(row.empty_share)} of the time</div>
+    <div>No empty docks: ${percent(row.full_share)} of the time</div>
+    <div class="popup-time">Based on ${row.hours_observed.toFixed(1)} hours of data in the last 24.
+      Its history is now in the chart above.</div>`;
+}
+
+// Grey and hollow circles are added first, so red and blue ones sit on top
+// where stations are close together.
+const SHARE_DRAW_ORDER = { insufficient: 0, neither: 1, full: 2, empty: 2 };
+
+function renderShareMap(shares) {
+  const located = shares.stations.filter((r) => r.lat != null && r.lon != null);
+  document.getElementById("share-window").textContent = shares.end_utc
+    ? `the 24 hours up to ${formatUtc(shares.end_utc)}`
+    : "the last 24 hours";
+  if (!state.shareMap) {
+    state.shareMap = createMap("share-map", located);
+    addBasemap(state.shareMap);
+  }
+  located.sort((a, b) => SHARE_DRAW_ORDER[a.category] - SHARE_DRAW_ORDER[b.category]);
+  for (const row of located) {
+    let marker = state.shareMarkers[row.station_id];
+    const style = shareStyle(row, shares.quiet_share);
+    const tooltip = `${escapeHtml(row.name)}: ${SHARE_HEADLINE[row.category].toLowerCase()}`;
+    if (!marker) {
+      marker = L.circleMarker([row.lat, row.lon], style).addTo(state.shareMap);
+      marker.on("click", () => selectStation(row.station_id));
+      marker.bindPopup(sharePopupHtml(row));
+      marker.bindTooltip(tooltip);
+      state.shareMarkers[row.station_id] = marker;
+    } else {
+      marker.setStyle(style);
+      marker.setPopupContent(sharePopupHtml(row));
+      marker.setTooltipContent(tooltip);
+    }
+  }
 }
 
 // ---------- heatmap ----------
@@ -522,10 +610,11 @@ async function checkLive() {
 async function refreshHistory() {
   state.lastHistory = Date.now();
   try {
-    const [meta, heatmap, health] = await Promise.all([
-      fetchJSON("meta.json"), fetchJSON("heatmap.json"), fetchJSON("health.json"),
+    const [meta, shares, heatmap, health] = await Promise.all([
+      fetchJSON("meta.json"), fetchJSON("empty_full_24h.json"), fetchJSON("heatmap.json"), fetchJSON("health.json"),
     ]);
     renderMeta(meta);
+    renderShareMap(shares);
     renderHeatmap(heatmap);
     renderHealth(health);
     if (meta.last_poll_utc && (!state.latestPollUtc || new Date(meta.last_poll_utc) > new Date(state.latestPollUtc))) {
@@ -552,10 +641,11 @@ function tick() {
 
 async function init() {
   const status = document.getElementById("status");
-  let meta, stations, heatmap, health;
+  let meta, stations, shares, heatmap, health;
   try {
-    [meta, stations, heatmap, health] = await Promise.all([
-      fetchJSON("meta.json"), fetchJSON("stations.json"), fetchJSON("heatmap.json"), fetchJSON("health.json"),
+    [meta, stations, shares, heatmap, health] = await Promise.all([
+      fetchJSON("meta.json"), fetchJSON("stations.json"), fetchJSON("empty_full_24h.json"),
+      fetchJSON("heatmap.json"), fetchJSON("health.json"),
     ]);
   } catch (error) {
     status.textContent = `Could not load dashboard data (${error.message}).`;
@@ -580,6 +670,7 @@ async function init() {
   attempt("footer", () => renderMeta(meta));
   attempt("map", () => renderMap(stations));
   attempt("station list", () => renderPicker(stations));
+  attempt("empty or full map", () => renderShareMap(shares));
   attempt("heatmap", () => renderHeatmap(heatmap));
   attempt("collection health", () => renderHealth(health));
   attempt("station history", () => {
