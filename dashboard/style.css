@@ -14,6 +14,8 @@
   --bikes: #2a788e;
   --failed: #c2410c;
   --grid: #e6e6ea;
+  --empty-line: #d73027;
+  --full-line: #4575b4;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -29,6 +31,8 @@
     --bikes: #5ec2d6;
     --failed: #fb923c;
     --grid: #2c2c31;
+  --empty-line: #f46d43;
+  --full-line: #74add1;
   }
 }
 
@@ -44,6 +48,8 @@
   --bikes: #5ec2d6;
   --failed: #fb923c;
   --grid: #2c2c31;
+  --empty-line: #f46d43;
+  --full-line: #74add1;
 }
 
 * { box-sizing: border-box; }
@@ -131,6 +137,15 @@ select {
 }
 
 .chart { width: 100%; min-height: 320px; }
+.chart-short { min-height: 120px; }
+.chart-title { font-size: 1rem; margin: 20px 0 4px; }
+/* Two charts side by side on wide screens, stacked on phones. */
+.chart-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 0 24px;
+}
+.chart-pair > div { min-width: 0; }
 
 .toggle {
   margin-top: 8px;

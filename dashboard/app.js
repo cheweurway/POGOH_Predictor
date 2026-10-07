@@ -1,10 +1,10 @@
 // POGOH availability dashboard.
 //
 // Reads the JSON files written by scripts/build_dashboard.py (in data/) and
-// draws five views: a station map (Leaflet over an OpenFreeMap background), one
-// station's history, a second map of how often each station was empty or
-// full in the last 24 hours, a stockout heatmap, and collection health
-// (Plotly).
+// draws: a station map (Leaflet over an OpenFreeMap background), whole-system
+// totals over time, one station's history and typical day, a second map of
+// how often each station was empty or full in the last 24 hours with
+// top-15 bar charts, a stockout heatmap, and collection health (Plotly).
 //
 // Two layers of data:
 // - The build (data/*.json, rebuilt on a schedule) has the history: charts,
@@ -43,6 +43,8 @@ const SHARE_EMPTY_SCALE = ["#f4a582", "#d73027", "#a50026"];
 const SHARE_FULL_SCALE = ["#92c5de", "#4575b4", "#313695"];
 const SHARE_NEITHER_COLOR = "#bdbdbd";
 const SHARE_DARKEST = 0.5;
+const SHARE_TOP = 15;  // bars in each "most often empty / full" chart
+const SYSTEM_DEFAULT_DAYS = 7;  // the system charts open on this many days
 // Heatmap colors: green = rarely empty, through yellow, to red = often empty.
 const HEATMAP_SCALE = ["#1a9850", "#91cf60", "#fee08b", "#fc8d59", "#d73027"];
 const DEFAULT_STATION_MATCH = "TCS Hall";
@@ -318,6 +320,61 @@ async function selectStation(stationId) {
     yaxis: { title: { text: "Bikes available" }, rangemode: "tozero", gridcolor: cssVar("--grid") },
     xaxis: { gridcolor: cssVar("--grid") },
   }), PLOT_CONFIG);
+  renderTypicalDay(series);
+}
+
+// "Oct 6" from a local wall-clock string "2026-10-06T...".
+function shortDate(localDay) {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+    .format(new Date(`${localDay}T12:00:00Z`));
+}
+
+// Average bikes by hour of day with a 25th-75th percentile band, plus the
+// newest day's readings as a dotted line. Hours are plotted at their middle
+// (10:30 for the 10 AM hour), and the newest day at its exact minutes.
+function renderTypicalDay(series) {
+  const chart = document.getElementById("typical-chart");
+  const typical = series.typical_day;
+  if (!typical || typical.mean.every((v) => v == null)) {
+    Plotly.purge(chart);
+    chart.textContent = "Not enough data for this station yet.";
+    return;
+  }
+  chart.textContent = "";
+  const mid = typical.hours.map((h) => h + 0.5);
+  const hoverHours = typical.hours.map((h) => `${hourLabel(h)} hour`);
+  const bikes = cssVar("--bikes");
+
+  const lastStamp = [...series.t_local].reverse().find((x) => x);
+  const lastDay = lastStamp ? lastStamp.slice(0, 10) : null;
+  const dayX = [], dayY = [];
+  series.t_local.forEach((x, i) => {
+    if (!x || x.slice(0, 10) !== lastDay) return;
+    dayX.push(Number(x.slice(11, 13)) + Number(x.slice(14, 16)) / 60);
+    dayY.push(series.free_bikes[i]);
+  });
+
+  const traces = [
+    { x: mid, y: typical.q75, mode: "lines", line: { width: 0 }, hoverinfo: "skip", showlegend: false, connectgaps: false },
+    { x: mid, y: typical.q25, mode: "lines", line: { width: 0 }, fill: "tonexty",
+      fillcolor: "rgba(127, 127, 127, 0.25)", name: "Middle half of readings", hoverinfo: "skip", connectgaps: false },
+    { x: mid, y: typical.mean, mode: "lines+markers", name: "Average", connectgaps: false,
+      line: { color: bikes, width: 2 }, marker: { size: 5, color: bikes },
+      text: hoverHours, customdata: typical.n,
+      hovertemplate: "%{text}<br>Average %{y:.1f} bikes<br>%{customdata} readings<extra></extra>" },
+  ];
+  if (dayX.length) {
+    traces.push({
+      x: dayX, y: dayY, mode: "lines", name: `${shortDate(lastDay)} so far`, connectgaps: false,
+      line: { color: cssVar("--text"), width: 1.5, dash: "dot" },
+      hovertemplate: `${shortDate(lastDay)}: %{y} bikes<extra></extra>`,
+    });
+  }
+  const ticks = [0, 3, 6, 9, 12, 15, 18, 21, 24];
+  Plotly.react(chart, traces, baseLayout({
+    yaxis: { title: { text: "Bikes available" }, rangemode: "tozero", gridcolor: cssVar("--grid") },
+    xaxis: { range: [0, 24], tickvals: ticks, ticktext: ticks.map((h) => hourLabel(h % 24)), gridcolor: cssVar("--grid") },
+  }), PLOT_CONFIG);
 }
 
 // ---------- empty or full in the last 24 hours ----------
@@ -393,6 +450,104 @@ function renderShareMap(shares) {
       marker.setTooltipContent(tooltip);
     }
   }
+}
+
+// Two horizontal bar charts: the stations most often empty and most often
+// full in the window. Stations at 0% and those without enough data are
+// left out.
+function renderShareBars(shares) {
+  const usable = shares.stations.filter((r) => r.category !== "insufficient");
+  const draw = (elementId, key, color, emptyText) => {
+    const chart = document.getElementById(elementId);
+    const top = usable.filter((r) => r[key] > 0)
+      .sort((a, b) => b[key] - a[key]).slice(0, SHARE_TOP);
+    if (!top.length) {
+      Plotly.purge(chart);
+      chart.textContent = emptyText;
+      return;
+    }
+    chart.textContent = "";
+    Plotly.react(chart, [{
+      type: "bar", orientation: "h",
+      x: top.map((r) => r[key]), y: top.map((r) => r.name),
+      marker: { color: color },
+      text: top.map((r) => percent(r[key])), textposition: "outside", cliponaxis: false,
+      hovertemplate: "%{y}<br>%{x:.0%} of the time<extra></extra>",
+    }], baseLayout({
+      height: top.length * 24 + 60,
+      margin: { l: 10, r: 40, t: 8, b: 30 },
+      xaxis: { tickformat: ".0%", range: [0, Math.max(...top.map((r) => r[key])) * 1.15],
+        gridcolor: cssVar("--grid"), zeroline: false },
+      yaxis: { autorange: "reversed", automargin: true, tickfont: { size: 11 } },
+    }), PLOT_CONFIG);
+  };
+  draw("share-empty-chart", "empty_share", cssVar("--empty-line"), "No station ran out of bikes in this window.");
+  draw("share-full-chart", "full_share", cssVar("--full-line"), "No station was full in this window.");
+}
+
+// ---------- whole system over time ----------
+
+// Wall-clock string minus a number of days (DST can shift it by an hour,
+// which does not matter for a starting view).
+function localMinusDays(localStamp, days) {
+  const ms = Date.parse(`${localStamp}Z`) - days * 86400000;
+  return new Date(ms).toISOString().slice(0, 19);
+}
+
+// Shared x axis for both system charts: 24 h / 7 days / All buttons, and a
+// starting view of the newest SYSTEM_DEFAULT_DAYS days. uirevision keeps the
+// user's choice when the charts refresh.
+function systemXAxis(stamps) {
+  const last = [...stamps].reverse().find((x) => x);
+  const first = stamps.find((x) => x);
+  const start = localMinusDays(last, SYSTEM_DEFAULT_DAYS);
+  return {
+    gridcolor: cssVar("--grid"),
+    range: [start > first ? start : first, last],
+    rangeselector: {
+      buttons: [
+        { count: 1, label: "24 h", step: "day", stepmode: "backward" },
+        { count: 7, label: "7 days", step: "day", stepmode: "backward" },
+        { step: "all", label: "All" },
+      ],
+      x: 0, y: 1.02, yanchor: "bottom",
+      bgcolor: cssVar("--surface"), activecolor: cssVar("--grid"),
+      bordercolor: cssVar("--border"), borderwidth: 1, font: { color: cssVar("--text") },
+    },
+  };
+}
+
+function renderSystem(system) {
+  const bikesChart = document.getElementById("system-bikes-chart");
+  const countsChart = document.getElementById("system-counts-chart");
+  if (!system.t_local.length) {
+    bikesChart.textContent = "No data yet.";
+    countsChart.textContent = "";
+    return;
+  }
+  const x = system.t_local;
+  const layout = (title, extra) => baseLayout(Object.assign({
+    uirevision: "system",
+    margin: { l: 50, r: 16, t: 40, b: 48 },
+    xaxis: systemXAxis(x),
+    yaxis: { title: { text: title }, rangemode: "tozero", gridcolor: cssVar("--grid") },
+  }, extra));
+
+  Plotly.react(bikesChart, [{
+    x: x, y: system.total_bikes, mode: "lines", name: "Bikes docked", connectgaps: false,
+    line: { color: cssVar("--bikes"), width: 2 },
+    customdata: system.n_stations,
+    hovertemplate: "%{x|%b %d %I:%M %p}<br>%{y} bikes docked at %{customdata} stations<extra></extra>",
+  }], layout("Bikes docked", { showlegend: false }), PLOT_CONFIG);
+
+  Plotly.react(countsChart, [
+    { x: x, y: system.n_empty, mode: "lines", name: "Empty (0 bikes)", connectgaps: false,
+      line: { color: cssVar("--empty-line"), width: 2 },
+      hovertemplate: "%{x|%b %d %I:%M %p}<br>%{y} stations empty<extra></extra>" },
+    { x: x, y: system.n_full, mode: "lines", name: "Full (0 empty docks)", connectgaps: false,
+      line: { color: cssVar("--full-line"), width: 2 },
+      hovertemplate: "%{x|%b %d %I:%M %p}<br>%{y} stations full<extra></extra>" },
+  ], layout("Stations", { legend: { orientation: "h", y: -0.25 } }), PLOT_CONFIG);
 }
 
 // ---------- heatmap ----------
@@ -617,11 +772,14 @@ async function checkLive() {
 async function refreshHistory() {
   state.lastHistory = Date.now();
   try {
-    const [meta, shares, heatmap, health] = await Promise.all([
-      fetchJSON("meta.json"), fetchJSON("empty_full_24h.json"), fetchJSON("heatmap.json"), fetchJSON("health.json"),
+    const [meta, system, shares, heatmap, health] = await Promise.all([
+      fetchJSON("meta.json"), fetchJSON("system.json"), fetchJSON("empty_full_24h.json"),
+      fetchJSON("heatmap.json"), fetchJSON("health.json"),
     ]);
     renderMeta(meta);
+    renderSystem(system);
     renderShareMap(shares);
+    renderShareBars(shares);
     renderHeatmap(heatmap);
     renderHealth(health);
     if (meta.last_poll_utc && (!state.latestPollUtc || new Date(meta.last_poll_utc) > new Date(state.latestPollUtc))) {
@@ -648,10 +806,10 @@ function tick() {
 
 async function init() {
   const status = document.getElementById("status");
-  let meta, stations, shares, heatmap, health;
+  let meta, stations, system, shares, heatmap, health;
   try {
-    [meta, stations, shares, heatmap, health] = await Promise.all([
-      fetchJSON("meta.json"), fetchJSON("stations.json"), fetchJSON("empty_full_24h.json"),
+    [meta, stations, system, shares, heatmap, health] = await Promise.all([
+      fetchJSON("meta.json"), fetchJSON("stations.json"), fetchJSON("system.json"), fetchJSON("empty_full_24h.json"),
       fetchJSON("heatmap.json"), fetchJSON("health.json"),
     ]);
   } catch (error) {
@@ -677,7 +835,9 @@ async function init() {
   attempt("footer", () => renderMeta(meta));
   attempt("map", () => renderMap(stations));
   attempt("station list", () => renderPicker(stations));
+  attempt("system charts", () => renderSystem(system));
   attempt("empty or full map", () => renderShareMap(shares));
+  attempt("empty or full bars", () => renderShareBars(shares));
   attempt("heatmap", () => renderHeatmap(heatmap));
   attempt("collection health", () => renderHealth(health));
   attempt("station history", () => {
