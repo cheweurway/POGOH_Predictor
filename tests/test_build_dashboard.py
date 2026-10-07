@@ -53,6 +53,9 @@ def test_build_from_database_writes_every_file(tmp_path, db_path):
     stations = _load(data / "stations.json")
     assert len(stations) == 3 and all(s["lat"] and s["lon"] for s in stations)
 
+    system = _load(data / "system.json")
+    assert system["n_stations"] == [3, 3]
+
     shares = _load(data / "empty_full_24h.json")
     assert len(shares["stations"]) == 3
     assert all(r["name"] and r["lat"] and r["lon"] for r in shares["stations"])
@@ -68,6 +71,7 @@ def test_build_from_database_writes_every_file(tmp_path, db_path):
     assert len(series_files) == 3
     one = _load(series_files[0])
     assert one["name"] and len(one["free_bikes"]) == 2 and one["rebalancing"] == []
+    assert len(one["typical_day"]["mean"]) == 24
 
 
 def test_rebuild_removes_stale_files(tmp_path, db_path):

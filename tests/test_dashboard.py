@@ -8,7 +8,7 @@ import json
 import pandas as pd
 
 from pogoh.dashboard import (
-    empty_full_share, latest_snapshot, meta, poll_health, rebalancing_events, station_series, stockout_heatmap,
+    empty_full_share, latest_snapshot, system_series, typical_day, meta, poll_health, rebalancing_events, station_series, stockout_heatmap,
 )
 
 T0 = pd.Timestamp("2026-10-05 14:00", tz="UTC")  # 10:00 in Pittsburgh
@@ -216,3 +216,43 @@ def test_tie_goes_to_empty_and_result_is_json_ready():
     assert _one(result)["category"] == "empty"
     assert result["end_local"] == "2026-10-05T10:10:00"
     json.dumps(result, allow_nan=False)
+
+
+# --- system_series ---------------------------------------------------------
+
+def _with_polls(df):
+    """Give rows taken at the same minute the same poll_id."""
+    df["poll_id"] = df["t"].rank(method="dense").astype(int)
+    return df
+
+
+def test_system_totals_and_counts_per_poll():
+    df = _with_polls(obs([("A", 0, 0, 10), ("B", 0, 7, 0), ("C", 0, 3, 3),
+                          ("A", 5, 2, 8), ("B", 5, 7, 0), ("C", 5, 3, 3)]))
+    s = system_series(df)
+    assert s["total_bikes"] == [10, 12]
+    assert s["n_empty"] == [1, 0]
+    assert s["n_full"] == [1, 1]
+    assert s["t_local"][0] == "2026-10-05T10:00:00"
+
+
+def test_system_skips_polls_missing_stations_and_breaks_at_gaps():
+    rows = [(sid, m, 5, 5) for m in (0, 5, 40) for sid in "ABCDEFGHIJ"]
+    rows += [("A", 10, 5, 5)]  # a poll that reached only 1 of 10 stations
+    s = system_series(_with_polls(obs(rows)))
+    assert s["total_bikes"] == [50, 50, None, 50]  # minute 10 left out; 35 min gap breaks
+
+
+# --- typical_day -----------------------------------------------------------
+
+def test_typical_day_by_local_hour():
+    # 10:00-10:55 local: 0, 4, 8 repeated; 11:00 has only 2 readings.
+    rows = [("A", m, (0, 4, 8)[i % 3], 5) for i, m in enumerate(range(0, 60, 5))]
+    rows += [("A", 60, 9, 1), ("A", 65, 9, 1)]
+    t = typical_day(obs(rows))["A"]
+    assert t["hours"][10] == 10 and t["n"][10] == 12
+    assert t["mean"][10] == 4.0
+    assert t["q25"][10] == 0.0 and t["q75"][10] == 8.0
+    assert t["mean"][11] is None and t["n"][11] == 2  # under the 3-reading minimum
+    assert t["mean"][3] is None and t["n"][3] == 0
+    json.dumps(t, allow_nan=False)

@@ -20,10 +20,12 @@ Output layout (everything the browser needs, nothing else):
                                           a stale copy after an update
     <out>/data/meta.json                  counts, timestamps, credits
     <out>/data/stations.json              newest state of every station
+    <out>/data/system.json                whole-system bikes docked and empty/full station counts
     <out>/data/empty_full_24h.json        share of the last 24 hours each station was empty or full
     <out>/data/heatmap.json               stockout share by station and hour of day
     <out>/data/health.json                polls per hour and the gap list
-    <out>/data/series/<station_id>.json   one station's history and rebalancing events
+    <out>/data/series/<station_id>.json   one station's history, rebalancing events,
+                                          and typical day by hour
 
 The <out>/data folder is deleted and rebuilt on every run so no stale files
 survive. Nothing outside <out> is touched.
@@ -98,6 +100,8 @@ def build(conn, out, site_dir=DEFAULT_SITE_DIR, built_at=None):
     write_json(data_dir / "meta.json", dashboard.meta(polls, obs, built_at))
     write_json(data_dir / "stations.json", dashboard.latest_snapshot(obs, stations))
 
+    write_json(data_dir / "system.json", dashboard.system_series(obs))
+
     shares = dashboard.empty_full_share(obs)
     places = stations.set_index("station_id")
     for row in shares["stations"]:
@@ -116,10 +120,12 @@ def build(conn, out, site_dir=DEFAULT_SITE_DIR, built_at=None):
     for event in dashboard.rebalancing_events(obs):
         events_by_station.setdefault(event["station_id"], []).append(event)
     series = dashboard.station_series(obs)
+    typical = dashboard.typical_day(obs)
     for station_id, s in series.items():
         s["station_id"] = station_id
         s["name"] = names.get(station_id)
         s["rebalancing"] = events_by_station.get(station_id, [])
+        s["typical_day"] = typical.get(station_id)
         write_json(data_dir / "series" / f"{station_id}.json", s)
 
     copied = []

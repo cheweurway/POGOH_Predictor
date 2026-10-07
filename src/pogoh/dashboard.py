@@ -23,6 +23,8 @@ TZ = "America/New_York"
 GAP = pd.Timedelta(minutes=10)
 REBALANCE_JUMP = 5  # bikes between successive polls
 HEATMAP_MIN_OBS = 3  # fewer observations than this leaves a heatmap cell blank
+TYPICAL_MIN_OBS = 3  # fewer observations than this leaves a typical-day hour blank
+SYSTEM_MIN_COVERAGE = 0.9  # polls reporting fewer stations than this share are left out
 SHARE_WINDOW = pd.Timedelta(hours=24)  # empty/full map looks back this far
 SHARE_MIN_HOURS = 12  # less observed time than this: "not enough data"
 SHARE_QUIET = 0.05  # empty and full both under this share: grey on the map
@@ -77,6 +79,31 @@ def latest_snapshot(obs, stations):
     return rows
 
 
+def _break_flags(t, gap):
+    """True where the line should break before this row: the previous row is
+    more than `gap` earlier, or the clock changed for daylight saving."""
+    offset = _utc_offset_minutes(t)
+    return (t.diff() > gap) | (offset.diff().fillna(0) != 0)
+
+
+def _with_breaks(t, columns, gap):
+    """Local time labels and value lists with a None row at every break."""
+    t = t.reset_index(drop=True)
+    breaks = _break_flags(t, gap)
+    labels = _local_labels(t)
+    xs = []
+    ys = {name: [] for name in columns}
+    for i, is_break in enumerate(breaks):
+        if is_break:
+            xs.append(labels.iloc[i - 1])
+            for name in columns:
+                ys[name].append(None)
+        xs.append(labels.iloc[i])
+        for name, values in columns.items():
+            ys[name].append(int(values.iloc[i]))
+    return xs, ys
+
+
 def station_series(obs, gap=GAP):
     """Per station: local times with free_bikes and empty_slots, ready to plot.
 
@@ -87,20 +114,64 @@ def station_series(obs, gap=GAP):
     """
     out = {}
     for station_id, g in obs.sort_values("t").groupby("station_id", sort=True):
-        t = g["t"].reset_index(drop=True)
-        offset = _utc_offset_minutes(t)
-        breaks = (t.diff() > gap) | (offset.diff().fillna(0) != 0)
-        labels = _local_labels(t)
-        xs, free, empty = [], [], []
-        for i, (is_break, x, f, e) in enumerate(zip(breaks, labels, g["free_bikes"], g["empty_slots"])):
-            if is_break:
-                xs.append(labels.iloc[i - 1])
-                free.append(None)
-                empty.append(None)
-            xs.append(x)
-            free.append(int(f))
-            empty.append(int(e))
-        out[station_id] = {"t_local": xs, "free_bikes": free, "empty_slots": empty}
+        g = g.reset_index(drop=True)
+        xs, ys = _with_breaks(g["t"], {"free_bikes": g["free_bikes"], "empty_slots": g["empty_slots"]}, gap)
+        out[station_id] = {"t_local": xs, **ys}
+    return out
+
+
+def system_series(obs, gap=GAP, min_coverage=SYSTEM_MIN_COVERAGE):
+    """Whole-system totals at each poll, ready to plot.
+
+    total_bikes: bikes docked at all stations together (dips mean bikes are
+    out, mostly being ridden). n_empty / n_full: stations with 0 bikes / 0
+    empty docks. A poll that reports fewer than `min_coverage` of the most
+    stations ever seen in one poll is left out, because missing stations
+    would look like a drop in bikes. Breaks follow the same gap rule as the
+    station charts.
+    """
+    if obs.empty:
+        return {"t_local": [], "total_bikes": [], "n_empty": [], "n_full": [], "n_stations": []}
+    per_poll = obs.groupby("poll_id").agg(
+        t=("t", "min"),
+        total_bikes=("free_bikes", "sum"),
+        n_empty=("free_bikes", lambda s: int((s == 0).sum())),
+        n_full=("empty_slots", lambda s: int((s == 0).sum())),
+        n_stations=("station_id", "nunique"),
+    )
+    per_poll = per_poll[per_poll["n_stations"] >= min_coverage * per_poll["n_stations"].max()]
+    per_poll = per_poll.sort_values("t").reset_index(drop=True)
+    columns = {name: per_poll[name] for name in ("total_bikes", "n_empty", "n_full", "n_stations")}
+    xs, ys = _with_breaks(per_poll["t"], columns, gap)
+    return {"t_local": xs, **ys}
+
+
+def typical_day(obs, min_obs=TYPICAL_MIN_OBS):
+    """Per station: free_bikes by hour of day (Pittsburgh time, all days).
+
+    For each hour: the mean and the 25th and 75th percentiles of the
+    observations in that hour, and how many there were. Hours with fewer
+    than `min_obs` observations are None. Like the heatmap, this counts
+    polls, not minutes.
+    """
+    hour = hour_of_day_local(obs["t"])
+    grouped = obs["free_bikes"].astype(float).groupby([obs["station_id"], hour])
+    stats = pd.DataFrame({
+        "mean": grouped.mean(),
+        "q25": grouped.quantile(0.25),
+        "q75": grouped.quantile(0.75),
+        "n": grouped.size(),
+    })
+    out = {}
+    for station_id, g in stats.groupby(level=0, sort=True):
+        g = g.droplevel(0).reindex(range(24))
+        enough = g["n"].fillna(0) >= min_obs
+        out[station_id] = {
+            "hours": list(range(24)),
+            **{name: [_clean(v) if ok else None for v, ok in zip(g[name], enough)]
+               for name in ("mean", "q25", "q75")},
+            "n": [int(v) if v == v else 0 for v in g["n"]],
+        }
     return out
 
 
