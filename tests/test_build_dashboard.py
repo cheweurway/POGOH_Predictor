@@ -53,6 +53,11 @@ def test_build_from_database_writes_every_file(tmp_path, db_path):
     stations = _load(data / "stations.json")
     assert len(stations) == 3 and all(s["lat"] and s["lon"] for s in stations)
 
+    shares = _load(data / "empty_full_24h.json")
+    assert len(shares["stations"]) == 3
+    assert all(r["name"] and r["lat"] and r["lon"] for r in shares["stations"])
+    assert shares["window_hours"] == 24
+
     heatmap = _load(data / "heatmap.json")
     assert len(heatmap["names"]) == 3 and None not in heatmap["names"]
 

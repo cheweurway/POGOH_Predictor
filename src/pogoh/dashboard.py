@@ -23,7 +23,10 @@ TZ = "America/New_York"
 GAP = pd.Timedelta(minutes=10)
 REBALANCE_JUMP = 5  # bikes between successive polls
 HEATMAP_MIN_OBS = 3  # fewer observations than this leaves a heatmap cell blank
-LOCAL_FORMAT = "%Y-%m-%dT%H:%M:%S"  # wall-clock time, no offset (for charts)
+SHARE_WINDOW = pd.Timedelta(hours=24)  # empty/full map looks back this far
+SHARE_MIN_HOURS = 12  # less observed time than this: "not enough data"
+SHARE_QUIET = 0.05  # empty and full both under this share: grey on the map
+LOCAL_FORMAT ="%Y-%m-%dT%H:%M:%S"  # wall-clock time, no offset (for charts)
 
 
 def _clean(value):
@@ -149,6 +152,66 @@ def stockout_heatmap(obs, min_obs=HEATMAP_MIN_OBS):
         "overall": [_clean(v) for v in overall],
         "hours": list(range(24)),
         "z": [[_clean(v) for v in row] for row in rates.to_numpy()],
+    }
+
+
+def empty_full_share(obs, end=None, window=SHARE_WINDOW, gap=GAP,
+                     min_hours=SHARE_MIN_HOURS, quiet=SHARE_QUIET):
+    """Share of the last `window` each station spent empty or full.
+
+    Empty means free_bikes == 0 (no bike to rent); full means
+    empty_slots == 0 (no dock to return one). The window ends at `end`
+    (default: the newest observation) and keeps rows with t > end - window.
+
+    Shares are by time, not by row count: each reading counts until the
+    station's next reading, but for at most `gap`, so a long gap is left out
+    instead of being filled with a guess, and two polls seconds apart barely
+    count twice. The newest reading counts until `end`. Shares are fractions
+    of the observed time, which is reported as hours_observed.
+
+    category, for the map colors:
+      "insufficient"  under `min_hours` of observed time
+      "neither"       empty and full both under `quiet`
+      "empty"         empty at least as often as full (bikes are the
+                      primary target, so a tie goes to empty)
+      "full"          full more often than empty
+    """
+    if end is None:
+        end = obs["t"].max()
+    recent = obs[(obs["t"] > end - window) & (obs["t"] <= end)].sort_values("t")
+    rows = []
+    for station_id, g in recent.groupby("station_id", sort=True):
+        next_t = g["t"].shift(-1).fillna(end)
+        weight = (next_t - g["t"]).clip(upper=gap).dt.total_seconds()
+        observed = weight.sum()
+        if observed > 0:
+            empty_share = float(weight[g["free_bikes"] == 0].sum() / observed)
+            full_share = float(weight[g["empty_slots"] == 0].sum() / observed)
+        else:
+            empty_share = full_share = None
+        hours = observed / 3600
+        if hours < min_hours:
+            category = "insufficient"
+        elif max(empty_share, full_share) < quiet:
+            category = "neither"
+        elif empty_share >= full_share:
+            category = "empty"
+        else:
+            category = "full"
+        rows.append({
+            "station_id": station_id,
+            "empty_share": empty_share,
+            "full_share": full_share,
+            "hours_observed": round(hours, 2),
+            "category": category,
+        })
+    return {
+        "window_hours": window.total_seconds() / 3600,
+        "end_utc": end.isoformat() if len(obs) else None,
+        "end_local": end.tz_convert(TZ).strftime(LOCAL_FORMAT) if len(obs) else None,
+        "min_hours": min_hours,
+        "quiet_share": quiet,
+        "stations": rows,
     }
 
 

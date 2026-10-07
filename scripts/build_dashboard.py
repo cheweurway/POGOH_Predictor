@@ -17,6 +17,7 @@ Output layout (everything the browser needs, nothing else):
     <out>/index.html, style.css, app.js   copied from dashboard/ if present
     <out>/data/meta.json                  counts, timestamps, credits
     <out>/data/stations.json              newest state of every station
+    <out>/data/empty_full_24h.json        share of the last 24 hours each station was empty or full
     <out>/data/heatmap.json               stockout share by station and hour of day
     <out>/data/health.json                polls per hour and the gap list
     <out>/data/series/<station_id>.json   one station's history and rebalancing events
@@ -77,6 +78,14 @@ def build(conn, out, site_dir=DEFAULT_SITE_DIR, built_at=None):
 
     write_json(data_dir / "meta.json", dashboard.meta(polls, obs, built_at))
     write_json(data_dir / "stations.json", dashboard.latest_snapshot(obs, stations))
+
+    shares = dashboard.empty_full_share(obs)
+    places = stations.set_index("station_id")
+    for row in shares["stations"]:
+        row["name"] = names.get(row["station_id"])
+        row["lat"] = dashboard._clean(places.at[row["station_id"], "latitude"])
+        row["lon"] = dashboard._clean(places.at[row["station_id"], "longitude"])
+    write_json(data_dir / "empty_full_24h.json", shares)
 
     heatmap = dashboard.stockout_heatmap(obs)
     heatmap["names"] = [names.get(s) for s in heatmap["station_ids"]]

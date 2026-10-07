@@ -8,7 +8,7 @@ import json
 import pandas as pd
 
 from pogoh.dashboard import (
-    latest_snapshot, meta, poll_health, rebalancing_events, station_series, stockout_heatmap,
+    empty_full_share, latest_snapshot, meta, poll_health, rebalancing_events, station_series, stockout_heatmap,
 )
 
 T0 = pd.Timestamp("2026-10-05 14:00", tz="UTC")  # 10:00 in Pittsburgh
@@ -154,3 +154,65 @@ def test_empty_inputs_do_not_crash():
     p = polls([])
     assert station_series(df) == {} and rebalancing_events(df) == []
     assert poll_health(p)["gaps"] == []
+
+
+# --- empty_full_share ------------------------------------------------------
+
+def _one(result, station_id="A"):
+    return next(r for r in result["stations"] if r["station_id"] == station_id)
+
+
+def test_shares_are_weighted_by_time_not_by_rows():
+    # Empty 0-10 (two readings), then bikes 10-30 (one reading held 10 min,
+    # then readings at 20 and 30 until the end at 30).
+    df = obs([("A", 0, 0, 10), ("A", 5, 0, 10), ("A", 10, 3, 7), ("A", 20, 3, 7), ("A", 30, 3, 7)])
+    r = _one(empty_full_share(df, min_hours=0))
+    assert r["empty_share"] == 10 / 30
+    assert r["full_share"] == 0
+    assert r["hours_observed"] == 0.5
+
+
+def test_polls_seconds_apart_barely_count():
+    # A duplicate poll 6 seconds after an empty reading adds 6 s, not a full slot.
+    df = obs([("A", 0, 0, 10), ("A", 0.1, 0, 10), ("A", 5, 4, 6), ("A", 10, 4, 6)])
+    r = _one(empty_full_share(df, min_hours=0))
+    assert r["empty_share"] == 0.5
+
+
+def test_long_gap_is_capped_not_filled():
+    # Full at minute 0, next reading 60 minutes later: only GAP (10 min) counts.
+    df = obs([("A", 0, 10, 0), ("A", 60, 5, 5), ("A", 70, 5, 5)])
+    r = _one(empty_full_share(df, min_hours=0))
+    assert r["hours_observed"] == round(20 / 60, 2)
+    assert r["full_share"] == 0.5
+
+
+def test_window_drops_readings_older_than_24_hours():
+    old = [("A", m, 0, 10) for m in range(0, 60, 5)]  # empty, then 25 hours later
+    new = [("A", 25 * 60 + m, 4, 6) for m in range(0, 60, 5)]
+    r = _one(empty_full_share(obs(old + new), min_hours=0))
+    assert r["empty_share"] == 0
+
+
+def test_categories():
+    rows = []
+    for m in range(0, 13 * 60, 5):  # 13 hours of readings, every 5 minutes
+        rows.append(("E", m, 0 if m < 120 else 3, 5))   # empty first 2 hours
+        rows.append(("F", m, 3, 0 if m < 120 else 5))   # full first 2 hours
+        rows.append(("N", m, 3, 5))                     # never either
+    rows.append(("S", 0, 0, 5))                          # one reading only
+    rows.append(("S", 5, 0, 5))
+    result = empty_full_share(obs(rows))
+    assert _one(result, "E")["category"] == "empty"
+    assert _one(result, "F")["category"] == "full"
+    assert _one(result, "N")["category"] == "neither"
+    assert _one(result, "S")["category"] == "insufficient"
+    assert result["window_hours"] == 24 and result["min_hours"] == 12
+
+
+def test_tie_goes_to_empty_and_result_is_json_ready():
+    df = obs([("A", 0, 0, 10), ("A", 5, 10, 0), ("A", 10, 5, 5)])
+    result = empty_full_share(df, min_hours=0)
+    assert _one(result)["category"] == "empty"
+    assert result["end_local"] == "2026-10-05T10:10:00"
+    json.dumps(result, allow_nan=False)
