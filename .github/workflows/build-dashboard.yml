@@ -1,0 +1,67 @@
+# Build the dashboard from the `data` branch and publish it to GitHub Pages
+# (https://cheweurway.github.io/POGOH_Predictor/).
+#
+# - Read only: this workflow never commits or pushes. The page is built in
+#   the runner and handed to Pages as an artifact.
+# - Triggered by hand ("Run workflow" on the Actions tab) or from outside by
+#   a cron-job.org job calling GitHub's workflow_dispatch API, like the
+#   collector. GitHub's own `schedule` trigger is not used (see collect.yml).
+# - Its concurrency group is separate from the collector's, so a build never
+#   delays a poll. A newer build waits for a running one to finish.
+# - The public page uses polls from the data branch only.
+
+name: Build dashboard
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read   # read main and the data branch
+  pages: write     # publish to GitHub Pages
+  id-token: write  # lets deploy-pages prove the request comes from this repo
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out code (main)
+        uses: actions/checkout@v7
+
+      # checkout fetches main only. build_dashboard.py reads the data branch
+      # with git archive from refs/remotes/origin/data, so fetch it there.
+      # Depth 1 is enough: only the newest tree is read.
+      - name: Fetch the data branch
+        run: git fetch --no-tags --depth=1 origin +refs/heads/data:refs/remotes/origin/data
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install --quiet "pandas>=2.2" "numpy>=1.26" "requests>=2.31"
+
+      - name: Build the site
+        run: python scripts/build_dashboard.py --from-branch --out _site
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
