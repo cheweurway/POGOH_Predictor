@@ -77,7 +77,10 @@ body {
   border-right: 1px solid var(--border);
   z-index: 1100;  /* above Leaflet's map panes and controls */
 }
-.sidebar-brand { margin: 0 8px 8px; font-weight: 700; }
+/* The title in the sidebar and in the header both go home (Stations now). */
+.sidebar a.sidebar-brand { margin: 0 0 8px; font-weight: 700; }
+.home-link { color: inherit; text-decoration: none; }
+.home-link:hover, .sidebar a.sidebar-brand:hover { text-decoration: underline; }
 .nav-group {
   margin: 16px 8px 4px;
   font-size: 0.75rem;

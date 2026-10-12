@@ -20,7 +20,7 @@
        ends in #<view> so links can be shared and Back works. On phones the
        sidebar slides in from the Menu button. -->
   <nav id="sidebar" class="sidebar" aria-label="Dashboard sections">
-    <p class="sidebar-brand">POGOH availability</p>
+    <a class="sidebar-brand" href="#stations">POGOH availability</a>
     <p class="nav-group">Now</p>
     <a href="#stations" data-view="stations">Stations now</a>
     <a href="#last-24h" data-view="last-24h">Last 24 hours</a>
@@ -37,7 +37,7 @@
   <header class="page-header">
     <button type="button" id="menu-button" class="menu-button" aria-controls="sidebar" aria-expanded="false">&#9776; Menu</button>
     <div class="page-title">
-      <h1>POGOH availability</h1>
+      <h1><a class="home-link" href="#stations">POGOH availability</a></h1>
       <p class="subtitle">Bikes and empty docks at Pittsburgh's 60 POGOH stations, checked about every 5 minutes.</p>
     </div>
     <p id="status" class="status" role="status">Loading data...</p>
