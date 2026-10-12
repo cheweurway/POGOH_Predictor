@@ -62,7 +62,7 @@ const state = {
   map: null, basemapKind: null, markers: {}, stations: [], selected: null,
   shareMap: null, shareMarkers: {},
   maps: {},                    // Leaflet map by element id, for re-measuring
-  fitted: new Set(),           // element ids of maps fitted while visible
+  pendingMaps: {},             // element id -> draw call waiting for its view to open
   heatmap: null, heatmapShowAll: false,
   latestPollUtc: null,         // time of the poll the map is showing
   latestSource: null,          // "build" or "live"
@@ -228,23 +228,22 @@ function addBasemap(map) {
 // view is set first, once, and left alone after that.
 function createMap(elementId, located) {
   const map = L.map(elementId, { scrollWheelZoom: false });
-  map.pogohBounds = located.length ? L.latLngBounds(located.map((s) => [s.lat, s.lon])) : null;
-  fitMap(map);
-  state.maps[elementId] = map;
-  if (isVisible(map.getContainer())) state.fitted.add(elementId);
-  return map;
-}
-
-function fitMap(map) {
-  if (map.pogohBounds) {
-    map.fitBounds(map.pogohBounds, { padding: [20, 20] });
+  if (located.length) {
+    map.fitBounds(L.latLngBounds(located.map((s) => [s.lat, s.lon])), { padding: [20, 20] });
   } else {
     map.setView([40.44, -79.96], 12);  // Pittsburgh
   }
+  state.maps[elementId] = map;
+  return map;
 }
 
-function isVisible(element) {
-  return element.offsetWidth > 0 || element.offsetHeight > 0;
+// A map is only created once its view is on screen: in a hidden view its box
+// measures 0 x 0, which gives a nonsense zoom and breaks the circles. Until
+// then the newest draw call is kept and run when the view opens.
+function deferUntilShown(elementId, draw) {
+  if (state.maps[elementId] || !document.getElementById(elementId).closest("section[hidden]")) return false;
+  state.pendingMaps[elementId] = draw;
+  return true;
 }
 
 function markerStyle(station) {
@@ -269,6 +268,7 @@ function popupHtml(station) {
 }
 
 function renderMap(stations) {
+  if (deferUntilShown("map", () => renderMap(stations))) return;
   const located = stations.filter((s) => s.lat != null && s.lon != null);
   if (!state.map) {
     state.map = createMap("map", located);
@@ -444,10 +444,11 @@ function shareTooltipHtml(row) {
 const SHARE_DRAW_ORDER = { insufficient: 0, neither: 1, full: 2, empty: 2 };
 
 function renderShareMap(shares) {
-  const located = shares.stations.filter((r) => r.lat != null && r.lon != null);
   document.getElementById("share-window").textContent = shares.end_utc
     ? `the 24 hours up to ${formatUtc(shares.end_utc)}`
     : "the last 24 hours";
+  if (deferUntilShown("share-map", () => renderShareMap(shares))) return;
+  const located = shares.stations.filter((r) => r.lat != null && r.lon != null);
   if (!state.shareMap) {
     state.shareMap = createMap("share-map", located);
     addBasemap(state.shareMap);
@@ -846,20 +847,24 @@ function showView(name) {
   }
   setMenuOpen(false);
   window.scrollTo(0, 0);
-  // Maps and charts drawn while their view was hidden measured a 0-size box.
-  // Re-measure them now that the view is on screen.
+  // Draw maps that waited for this view, and re-measure maps and charts
+  // that were drawn or resized while it was hidden.
   const section = document.getElementById(`view-${name}`);
   requestAnimationFrame(() => resizeIn(section));
 }
 
 function resizeIn(section) {
   for (const element of section.querySelectorAll(".map")) {
-    const map = state.maps[element.id];
-    if (!map) continue;
-    map.invalidateSize();
-    if (!state.fitted.has(element.id) && isVisible(element)) {
-      fitMap(map);
-      state.fitted.add(element.id);
+    const pending = state.pendingMaps[element.id];
+    if (pending) {
+      delete state.pendingMaps[element.id];
+      try {
+        pending();
+      } catch (error) {
+        console.error(`Dashboard: drawing ${element.id} failed`, error);
+      }
+    } else if (state.maps[element.id]) {
+      state.maps[element.id].invalidateSize();
     }
   }
   for (const element of section.querySelectorAll(".chart")) {
