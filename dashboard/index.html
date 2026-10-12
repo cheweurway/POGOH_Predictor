@@ -16,8 +16,27 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Sidebar: one link per view. Only the chosen view is shown; the address
+       ends in #<view> so links can be shared and Back works. On phones the
+       sidebar slides in from the Menu button. -->
+  <nav id="sidebar" class="sidebar" aria-label="Dashboard sections">
+    <p class="sidebar-brand">POGOH availability</p>
+    <p class="nav-group">Now</p>
+    <a href="#stations" data-view="stations">Stations now</a>
+    <a href="#last-24h" data-view="last-24h">Last 24 hours</a>
+    <p class="nav-group">Explore</p>
+    <a href="#history" data-view="history">Station history</a>
+    <a href="#system" data-view="system">Whole system</a>
+    <a href="#run-out" data-view="run-out">When stations run out</a>
+    <p class="nav-group">About</p>
+    <a href="#health" data-view="health">Collection health</a>
+  </nav>
+  <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+
+  <div class="content">
   <header class="page-header">
-    <div>
+    <button type="button" id="menu-button" class="menu-button" aria-controls="sidebar" aria-expanded="false">&#9776; Menu</button>
+    <div class="page-title">
       <h1>POGOH availability</h1>
       <p class="subtitle">Bikes and empty docks at Pittsburgh's 60 POGOH stations, checked about every 5 minutes.</p>
     </div>
@@ -25,9 +44,9 @@
   </header>
 
   <main>
-    <section aria-labelledby="map-title">
+    <section id="view-stations" data-view="stations" aria-labelledby="map-title">
       <h2 id="map-title">Stations now</h2>
-      <p class="note">Color shows how full each station is (bikes as a share of bikes plus empty docks). Red circles with a dashed outline have no bikes. Stations with bikes go from yellow (a few bikes for their size) to green (full). Click a station for details and its history below.</p>
+      <p class="note">Color shows how full each station is (bikes as a share of bikes plus empty docks). Red circles with a dashed outline have no bikes. Stations with bikes go from yellow (a few bikes for their size) to green (full). Click a station for details, then "See history" for its full history.</p>
       <div id="map" class="map" aria-label="Map of POGOH stations"></div>
       <div class="legend" aria-hidden="true">
         <span class="legend-item">
@@ -42,29 +61,9 @@
       </div>
     </section>
 
-    <section aria-labelledby="system-title">
-      <h2 id="system-title">Whole system over time</h2>
-      <p class="note">Total bikes docked at all stations together. Dips mean bikes are out of the docks: mostly being ridden, but trucks and maintenance also take bikes out, so this is not a trip count. Use the buttons to show the last 24 hours, 7 days, or everything.</p>
-      <div id="system-bikes-chart" class="chart"></div>
-      <p class="note">How many stations had no bikes (empty) and how many had no empty docks (full) at each poll. Polls that missed some stations are left out, and the line breaks at gaps of more than <span class="gap-minutes">10</span> minutes.</p>
-      <div id="system-counts-chart" class="chart"></div>
-    </section>
-
-    <section aria-labelledby="series-title">
-      <h2 id="series-title">Station history</h2>
-      <label class="picker">Station
-        <select id="station-select"></select>
-      </label>
-      <div id="series-chart" class="chart"></div>
-      <p class="note">Breaks in the line are gaps of more than <span class="gap-minutes">10</span> minutes with no data; nothing is filled in. Diamonds mark suspected rebalancing: 5 or more bikes added or removed between two polls.</p>
-      <h3 class="chart-title">Typical day at this station</h3>
-      <p class="note">Average bikes available in each hour of the day (Pittsburgh time, all days so far combined). The shaded band holds the middle half of readings for that hour. The dotted line is the newest day, to compare against. With only a few days of data, this is still rough.</p>
-      <div id="typical-chart" class="chart"></div>
-    </section>
-
-    <section aria-labelledby="share-title">
+    <section id="view-last-24h" data-view="last-24h" aria-labelledby="share-title">
       <h2 id="share-title">Empty or full in the last 24 hours</h2>
-      <p class="note">How much of <span id="share-window">the last 24 hours</span> each station had no bikes to rent (empty) or no empty docks to return one (full). Red stations were empty more often than full, blue ones full more often than empty, and darker means more of the day. Grey stations were empty and full less than 5% of the time each. Hollow circles have less than 12 hours of data. Click a station for both numbers. Time is measured from poll to poll, and gaps of more than <span class="gap-minutes">10</span> minutes are left out.</p>
+      <p class="note">How much of <span id="share-window">the last 24 hours</span> each station had no bikes to rent (empty) or no empty docks to return one (full). Red stations were empty more often than full, blue ones full more often than empty, and darker means more of the day. Grey stations were empty and full less than 5% of the time each. Hollow circles have less than 12 hours of data. Click a station for both numbers and a link to its history. Time is measured from poll to poll, and gaps of more than <span class="gap-minutes">10</span> minutes are left out.</p>
       <div id="share-map" class="map" aria-label="Map of how often each station was empty or full in the last 24 hours"></div>
       <div class="legend" aria-hidden="true">
         <span class="legend-scale">
@@ -96,14 +95,34 @@
       </div>
     </section>
 
-    <section aria-labelledby="heatmap-title">
+    <section id="view-history" data-view="history" aria-labelledby="series-title">
+      <h2 id="series-title">Station history</h2>
+      <label class="picker">Station
+        <select id="station-select"></select>
+      </label>
+      <div id="series-chart" class="chart"></div>
+      <p class="note">Breaks in the line are gaps of more than <span class="gap-minutes">10</span> minutes with no data; nothing is filled in. Diamonds mark suspected rebalancing: 5 or more bikes added or removed between two polls.</p>
+      <h3 class="chart-title">Typical day at this station</h3>
+      <p class="note">Average bikes available in each hour of the day (Pittsburgh time, all days so far combined). The shaded band holds the middle half of readings for that hour. The dotted line is the newest day, to compare against. With only a few days of data, this is still rough.</p>
+      <div id="typical-chart" class="chart"></div>
+    </section>
+
+    <section id="view-system" data-view="system" aria-labelledby="system-title">
+      <h2 id="system-title">Whole system over time</h2>
+      <p class="note">Total bikes docked at all stations together. Dips mean bikes are out of the docks: mostly being ridden, but trucks and maintenance also take bikes out, so this is not a trip count. Use the buttons to show the last 24 hours, 7 days, or everything.</p>
+      <div id="system-bikes-chart" class="chart"></div>
+      <p class="note">How many stations had no bikes (empty) and how many had no empty docks (full) at each poll. Polls that missed some stations are left out, and the line breaks at gaps of more than <span class="gap-minutes">10</span> minutes.</p>
+      <div id="system-counts-chart" class="chart"></div>
+    </section>
+
+    <section id="view-run-out" data-view="run-out" aria-labelledby="heatmap-title">
       <h2 id="heatmap-title">When stations run out of bikes</h2>
       <p class="note">Share of polls with 0 bikes, by station and hour of the day (Pittsburgh time, all days combined). Green means the station rarely ran out at that hour, red means it often did. Blank cells have fewer than 3 polls. The stations that run out most often are at the top. Counts are polls, not minutes.</p>
       <div id="heatmap-chart" class="chart"></div>
       <button type="button" id="heatmap-toggle" class="toggle" hidden>Show all stations</button>
     </section>
 
-    <section aria-labelledby="health-title">
+    <section id="view-health" data-view="health" aria-labelledby="health-title">
       <h2 id="health-title">Collection health</h2>
       <p class="note">Successful and failed polls per hour. A healthy hour has about 12. Gaps of more than <span class="gap-minutes">10</span> minutes between successful polls are listed below.</p>
       <div id="health-chart" class="chart"></div>
@@ -122,6 +141,7 @@
     <p id="built-at"></p>
     <p><a href="https://github.com/cheweurway/POGOH_Predictor">Source code</a></p>
   </footer>
+  </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
           integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg=="

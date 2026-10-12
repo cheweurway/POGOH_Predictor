@@ -61,6 +61,8 @@ const PARAMS = new URLSearchParams(location.search);
 const state = {
   map: null, basemapKind: null, markers: {}, stations: [], selected: null,
   shareMap: null, shareMarkers: {},
+  maps: {},                    // Leaflet map by element id, for re-measuring
+  fitted: new Set(),           // element ids of maps fitted while visible
   heatmap: null, heatmapShowAll: false,
   latestPollUtc: null,         // time of the poll the map is showing
   latestSource: null,          // "build" or "live"
@@ -226,12 +228,23 @@ function addBasemap(map) {
 // view is set first, once, and left alone after that.
 function createMap(elementId, located) {
   const map = L.map(elementId, { scrollWheelZoom: false });
-  if (located.length) {
-    map.fitBounds(L.latLngBounds(located.map((s) => [s.lat, s.lon])), { padding: [20, 20] });
+  map.pogohBounds = located.length ? L.latLngBounds(located.map((s) => [s.lat, s.lon])) : null;
+  fitMap(map);
+  state.maps[elementId] = map;
+  if (isVisible(map.getContainer())) state.fitted.add(elementId);
+  return map;
+}
+
+function fitMap(map) {
+  if (map.pogohBounds) {
+    map.fitBounds(map.pogohBounds, { padding: [20, 20] });
   } else {
     map.setView([40.44, -79.96], 12);  // Pittsburgh
   }
-  return map;
+}
+
+function isVisible(element) {
+  return element.offsetWidth > 0 || element.offsetHeight > 0;
 }
 
 function markerStyle(station) {
@@ -242,12 +255,17 @@ function markerStyle(station) {
   return { radius: 8, color: "#fff", weight: 1.5, fillColor: fill, fillOpacity: 0.95 };
 }
 
+// Opens the Station history view. The marker's click handler has already
+// selected the station, so the view shows the right one.
+const HISTORY_LINK = '<a class="popup-link" href="#history">See history &rarr;</a>';
+
 function popupHtml(station) {
   return `<h3>${escapeHtml(station.name)}</h3>
     <div><strong>${station.free_bikes}</strong> bikes
       (${station.normal_bikes ?? "?"} regular, ${station.ebikes ?? "?"} e-bikes)</div>
     <div><strong>${station.empty_slots}</strong> empty docks</div>
-    <div class="popup-time">As of ${escapeHtml(formatUtc(station.t_utc))}</div>`;
+    <div class="popup-time">As of ${escapeHtml(formatUtc(station.t_utc))}</div>
+    ${HISTORY_LINK}`;
 }
 
 function renderMap(stations) {
@@ -410,7 +428,8 @@ function sharePopupHtml(row) {
     <div>No bikes: ${percent(row.empty_share)} of the time</div>
     <div>No empty docks: ${percent(row.full_share)} of the time</div>
     <div class="popup-time">Based on ${row.hours_observed.toFixed(1)} hours of data in the last 24.
-      Its history is now in the chart above.</div>`;
+</div>
+    ${HISTORY_LINK}`;
 }
 
 // Hover label: the station and both shares, e.g. "Empty 51% · Full 0%".
@@ -802,9 +821,82 @@ function tick() {
   if (now - state.lastHistory >= HISTORY_EVERY_MS) refreshHistory();
 }
 
+// ---------- views (sidebar) ----------
+// Each <section data-view> is one view; only one is shown at a time. The
+// address ends in #<view>, so a link opens that view and Back works.
+
+const DEFAULT_VIEW = "stations";
+
+function viewNames() {
+  return [...document.querySelectorAll("main > section[data-view]")].map((s) => s.dataset.view);
+}
+
+function viewFromHash() {
+  const name = location.hash.replace(/^#/, "");
+  return viewNames().includes(name) ? name : DEFAULT_VIEW;
+}
+
+function showView(name) {
+  for (const section of document.querySelectorAll("main > section[data-view]")) {
+    section.hidden = section.dataset.view !== name;
+  }
+  for (const link of document.querySelectorAll("#sidebar a[data-view]")) {
+    if (link.dataset.view === name) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+  setMenuOpen(false);
+  window.scrollTo(0, 0);
+  // Maps and charts drawn while their view was hidden measured a 0-size box.
+  // Re-measure them now that the view is on screen.
+  const section = document.getElementById(`view-${name}`);
+  requestAnimationFrame(() => resizeIn(section));
+}
+
+function resizeIn(section) {
+  for (const element of section.querySelectorAll(".map")) {
+    const map = state.maps[element.id];
+    if (!map) continue;
+    map.invalidateSize();
+    if (!state.fitted.has(element.id) && isVisible(element)) {
+      fitMap(map);
+      state.fitted.add(element.id);
+    }
+  }
+  for (const element of section.querySelectorAll(".chart")) {
+    if (element.data && window.Plotly && Plotly.Plots && Plotly.Plots.resize) {
+      Plotly.Plots.resize(element);
+    }
+  }
+}
+
+function setMenuOpen(open) {
+  const sidebar = document.getElementById("sidebar");
+  const button = document.getElementById("menu-button");
+  sidebar.classList.toggle("open", open);
+  button.setAttribute("aria-expanded", String(open));
+  document.getElementById("sidebar-backdrop").hidden = !open;
+  if (open) sidebar.querySelector("a[aria-current]")?.focus();
+}
+
+function setUpViews() {
+  document.getElementById("menu-button").addEventListener("click", () => {
+    setMenuOpen(!document.getElementById("sidebar").classList.contains("open"));
+  });
+  document.getElementById("sidebar-backdrop").addEventListener("click", () => setMenuOpen(false));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && document.getElementById("sidebar").classList.contains("open")) {
+      setMenuOpen(false);
+      document.getElementById("menu-button").focus();
+    }
+  });
+  window.addEventListener("hashchange", () => showView(viewFromHash()));
+  showView(viewFromHash());
+}
+
 // ---------- start ----------
 
 async function init() {
+  setUpViews();  // before drawing, so the first view's maps get their real size
   const status = document.getElementById("status");
   let meta, stations, system, shares, heatmap, health;
   try {
