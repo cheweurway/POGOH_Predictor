@@ -89,6 +89,12 @@ body {
   text-transform: uppercase;
   color: var(--muted);
 }
+/* A divider line above each group after the first (Explore, About). */
+.nav-group ~ .nav-group {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
 .sidebar a {
   display: block;
   padding: 6px 8px;
