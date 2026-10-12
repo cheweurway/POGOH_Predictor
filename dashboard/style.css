@@ -97,11 +97,13 @@ body {
   text-decoration: none;
 }
 .sidebar a:hover { background: var(--bg); }
-.sidebar a[aria-current="page"] {
-  background: var(--bg);
-  color: var(--accent);
+/* Current view: a solid pill in the text color with the text in the panel
+   color, so white with dark text in dark mode, dark with white in light. */
+.sidebar a[aria-current="page"],
+.sidebar a[aria-current="page"]:hover {
+  background: var(--text);
+  color: var(--surface);
   font-weight: 600;
-  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .content { margin-left: var(--sidebar-width); }
