@@ -1,10 +1,10 @@
 school,kind,start_date,end_date,note
-CMU,term,2026-08-24,2026-12-15,Fall 2026: first day of classes through make-up final exams
+CMU,term,2026-08-24,2026-12-14,Fall 2026: first day of classes through make-up final exams (Dec 14)
 CMU,no_classes,2026-09-07,2026-09-07,Labor Day (university closed)
 CMU,no_classes,2026-10-12,2026-10-16,Fall break
 CMU,no_classes,2026-11-03,2026-11-03,Democracy Day (evening classes after 5 pm still meet)
 CMU,no_classes,2026-11-25,2026-11-27,Thanksgiving break
-CMU,finals,2026-12-07,2026-12-15,Final exams with reading days and make-up exams
+CMU,finals,2026-12-07,2026-12-14,Final exams Dec 7 to 13 plus make-up final exams Dec 14
 PITT,term,2026-08-24,2026-12-12,Fall 2026: classes begin through fall term end
 PITT,no_classes,2026-09-07,2026-09-07,Labor Day (university closed)
 PITT,no_classes,2026-10-09,2026-10-11,Fall break for students
