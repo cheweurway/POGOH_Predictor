@@ -8,7 +8,7 @@ import json
 import pandas as pd
 
 from pogoh.dashboard import (
-    empty_full_share, latest_snapshot, system_series, typical_day, meta, poll_health, rebalancing_events, station_series, stockout_heatmap,
+    empty_full_share, latest_snapshot, system_series, typical_day, meta, poll_health, station_series, stockout_heatmap,
 )
 
 T0 = pd.Timestamp("2026-10-05 14:00", tz="UTC")  # 10:00 in Pittsburgh
@@ -60,20 +60,6 @@ def test_series_keeps_stations_apart():
     df = obs([("A", 0, 1, 9), ("B", 0, 7, 3), ("A", 5, 2, 8)])
     s = station_series(df)
     assert s["A"]["free_bikes"] == [1, 2] and s["B"]["free_bikes"] == [7]
-
-
-# --- rebalancing_events ----------------------------------------------------
-
-def test_jump_of_five_is_flagged_and_four_is_not():
-    df = obs([("A", 0, 2, 10), ("A", 5, 7, 5), ("A", 10, 3, 9)])  # +5 then -4
-    events = rebalancing_events(df)
-    assert len(events) == 1
-    assert events[0]["before"] == 2 and events[0]["after"] == 7 and events[0]["change"] == 5
-
-
-def test_jump_across_a_gap_is_not_flagged():
-    df = obs([("A", 0, 2, 10), ("A", 40, 8, 4)])  # +6 but 40 minutes apart
-    assert rebalancing_events(df) == []
 
 
 # --- stockout_heatmap ------------------------------------------------------
@@ -136,7 +122,7 @@ def test_every_output_is_json_serializable():
     df = obs([("A", 0, 0, 10), ("A", 5, 6, 4), ("A", 10, 0, 10)])
     p = polls([(0, 1), (5, 1), (10, 0)])
     stations = pd.DataFrame({"station_id": ["A"], "name": ["Alpha"], "latitude": [40.4], "longitude": [-79.9]})
-    for result in (latest_snapshot(df, stations), station_series(df), rebalancing_events(df),
+    for result in (latest_snapshot(df, stations), station_series(df),
                    stockout_heatmap(df), poll_health(p), meta(p, df, T0)):
         json.dumps(result, allow_nan=False)  # NaN would be invalid JSON in the browser
 
@@ -152,7 +138,7 @@ def test_meta_counts():
 def test_empty_inputs_do_not_crash():
     df = obs([])
     p = polls([])
-    assert station_series(df) == {} and rebalancing_events(df) == []
+    assert station_series(df) == {}
     assert poll_health(p)["gaps"] == []
 
 

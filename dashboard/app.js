@@ -323,16 +323,6 @@ async function selectStation(stationId) {
       line: { color: cssVar("--bikes"), width: 2 }, connectgaps: false,
       hovertemplate: "%{x|%b %d %I:%M %p}<br>%{y} bikes<extra></extra>" },
   ];
-  if (series.rebalancing.length) {
-    traces.push({
-      x: series.rebalancing.map((e) => e.t_local),
-      y: series.rebalancing.map((e) => e.after),
-      text: series.rebalancing.map((e) => `${e.before} to ${e.after} bikes`),
-      name: "Suspected rebalancing", mode: "markers",
-      marker: { symbol: "diamond", size: 10, color: cssVar("--text") },
-      hovertemplate: "%{x|%b %d %I:%M %p}<br>Suspected rebalancing: %{text}<extra></extra>",
-    });
-  }
   Plotly.react(chart, traces, baseLayout({
     uirevision: stationId,  // keep the user's zoom when the same station refreshes
     yaxis: { title: { text: "Bikes available" }, rangemode: "tozero", gridcolor: cssVar("--grid") },

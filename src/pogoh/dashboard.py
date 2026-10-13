@@ -7,8 +7,7 @@ network, which keeps the functions easy to test.
 
 One gap rule is used everywhere: two successive observations more than GAP
 apart (10 minutes, so at least one missed poll beyond normal jitter) are
-treated as a gap. Charts break the line there, the health table lists it,
-and a bike count change across it is not called a rebalancing event.
+treated as a gap. Charts break the line there and the health table lists it.
 
 All times shown to people are in Pittsburgh time (TZ). Times are converted
 from UTC with tz_convert, which handles the daylight saving change on
@@ -21,7 +20,6 @@ import pandas as pd
 
 TZ = "America/New_York"
 GAP = pd.Timedelta(minutes=10)
-REBALANCE_JUMP = 5  # bikes between successive polls
 HEATMAP_MIN_OBS = 3  # fewer observations than this leaves a heatmap cell blank
 TYPICAL_MIN_OBS = 3  # fewer observations than this leaves a typical-day hour blank
 SYSTEM_MIN_COVERAGE = 0.9  # polls reporting fewer stations than this share are left out
@@ -173,28 +171,6 @@ def typical_day(obs, min_obs=TYPICAL_MIN_OBS):
             "n": [int(v) if v == v else 0 for v in g["n"]],
         }
     return out
-
-
-def rebalancing_events(obs, gap=GAP, jump=REBALANCE_JUMP):
-    """Suspected rebalancing: free_bikes changes by `jump` or more between
-    successive polls of a station that are not separated by a gap.
-
-    "Suspected" because a burst of riders can also do this.
-    """
-    events = []
-    for station_id, g in obs.sort_values("t").groupby("station_id", sort=True):
-        dt = g["t"].diff()
-        change = g["free_bikes"].diff()
-        hits = g[(dt <= gap) & (change.abs() >= jump)]
-        for idx, row in hits.iterrows():
-            events.append({
-                "station_id": station_id,
-                "t_local": row["t"].tz_convert(TZ).strftime(LOCAL_FORMAT),
-                "before": int(row["free_bikes"] - change[idx]),
-                "after": int(row["free_bikes"]),
-                "change": int(change[idx]),
-            })
-    return events
 
 
 def hour_of_day_local(t):

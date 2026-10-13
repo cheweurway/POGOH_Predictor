@@ -70,7 +70,7 @@ def test_build_from_database_writes_every_file(tmp_path, db_path):
     series_files = list((data / "series").glob("*.json"))
     assert len(series_files) == 3
     one = _load(series_files[0])
-    assert one["name"] and len(one["free_bikes"]) == 2 and one["rebalancing"] == []
+    assert one["name"] and len(one["free_bikes"]) == 2
     assert len(one["typical_day"]["mean"]) == 24
 
 
