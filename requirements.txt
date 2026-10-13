@@ -2,3 +2,4 @@ requests>=2.31
 pandas>=2.2
 numpy>=1.26
 pytest>=8.0
+scikit-learn>=1.9
