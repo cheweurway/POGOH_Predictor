@@ -29,8 +29,10 @@ CMU and University of Pittsburgh 2026-27 academic calendars.
 
 ## How data is collected
 
-The main collector is a scheduled GitHub Actions workflow
-(`.github/workflows/collect.yml`). Every 5 minutes it polls the API and
+The main collector is a GitHub Actions workflow
+(`.github/workflows/collect.yml`), started every 5 minutes by an external
+scheduler ([cron-job.org](https://cron-job.org)) because GitHub's own
+schedule trigger did not fire for this repository. Each run polls the API and
 commits one gzipped JSON file per poll to the `data` branch of this
 repository, so collection does not depend on a laptop being awake. The raw
 data is therefore public, like the API it comes from.
@@ -49,6 +51,35 @@ For analysis, the laptop imports the branch into a local SQLite database,
 A Windows Task Scheduler collector that writes straight to the local
 database is also available (see below). It was the first setup, and gaps
 from laptop sleep made it unreliable on its own.
+
+## Dashboard
+
+A public dashboard shows the collected data:
+<https://cheweurway.github.io/POGOH_Predictor/>
+
+It has a map of stations now, a map of stations that were empty or full in
+the last 24 hours, each station's history, system totals, a typical day,
+and which stations run out most often. It also shows collection health.
+
+The page is rebuilt every 5 minutes by `.github/workflows/build-dashboard.yml`,
+which reads the `data` branch (it never writes to it), runs
+`scripts/build_dashboard.py`, and publishes to GitHub Pages. Between builds,
+the page checks the `data` branch for a newer poll and shows it. It never
+calls the CityBikes API directly.
+
+Map credits: basemap style by [OpenFreeMap](https://openfreemap.org), map
+data from [OpenMapTiles](https://openmaptiles.org) and
+[OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. Map
+library [Leaflet](https://leafletjs.com) with
+[MapLibre GL](https://maplibre.org); charts by [Plotly](https://plotly.com).
+Station data from [CityBikes](https://citybik.es).
+
+To build and view it locally:
+
+```powershell
+.venv\Scripts\python scripts\build_dashboard.py --db data\pogoh.db --out data\dashboard_site
+.venv\Scripts\python -m http.server 8000 -d data\dashboard_site
+```
 
 ## Setup
 
@@ -125,6 +156,10 @@ latest hour at or before t.
   cached in `data/weather.csv` (not committed).
 - `src/pogoh/evaluate.py`: the time split.
 - `src/pogoh/baselines.py`: persistence and hour-of-week baselines.
+- `src/pogoh/dashboard.py`, `scripts/build_dashboard.py`: shape the data
+  into JSON files for the dashboard and build the site.
+- `dashboard/`: the dashboard page (`index.html`, `style.css`, `app.js`).
+- `.github/workflows/build-dashboard.yml`: builds and publishes the dashboard.
 - `tests/`: tests for every module above, including the leakage tests.
 
 ## Preparing data for analysis
