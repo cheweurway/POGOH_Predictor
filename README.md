@@ -154,8 +154,11 @@ latest hour at or before t.
 - `src/pogoh/calendar.py` and `data/calendar.csv`: academic calendar flags.
 - `src/pogoh/weather.py`, `scripts/update_weather.py`: hourly weather,
   cached in `data/weather.csv` (not committed).
-- `src/pogoh/evaluate.py`: the time split.
+- `src/pogoh/evaluate.py`: the time split and the metrics (precision,
+  recall, F1, PR-AUC, overall and on transition rows).
 - `src/pogoh/baselines.py`: persistence and hour-of-week baselines.
+- `scripts/run_baselines.py`: counts rows, stockouts, and transitions per
+  split and scores both baselines on the validation split.
 - `src/pogoh/dashboard.py`, `scripts/build_dashboard.py`: shape the data
   into JSON files for the dashboard and build the site.
 - `dashboard/`: the dashboard page (`index.html`, `style.css`, `app.js`).
