@@ -27,7 +27,6 @@
     <p class="nav-group">Explore</p>
     <a href="#history" data-view="history">Station history</a>
     <a href="#system" data-view="system">Whole system</a>
-    <a href="#run-out" data-view="run-out">When stations run out</a>
     <p class="nav-group">About</p>
     <a href="#health" data-view="health">Collection health</a>
   </nav>
@@ -113,13 +112,6 @@
       <div id="system-bikes-chart" class="chart"></div>
       <p class="note">How many stations had no bikes (empty) and how many had no empty docks (full) at each poll. Polls that missed some stations are left out, and the line breaks at gaps of more than <span class="gap-minutes">10</span> minutes.</p>
       <div id="system-counts-chart" class="chart"></div>
-    </section>
-
-    <section id="view-run-out" data-view="run-out" aria-labelledby="heatmap-title">
-      <h2 id="heatmap-title">When stations run out of bikes</h2>
-      <p class="note">Share of polls with 0 bikes, by station and hour of the day (Pittsburgh time, all days combined). Green means the station rarely ran out at that hour, red means it often did. Blank cells have fewer than 3 polls. The stations that run out most often are at the top. Counts are polls, not minutes.</p>
-      <div id="heatmap-chart" class="chart"></div>
-      <button type="button" id="heatmap-toggle" class="toggle" hidden>Show all stations</button>
     </section>
 
     <section id="view-health" data-view="health" aria-labelledby="health-title">

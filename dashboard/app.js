@@ -4,11 +4,11 @@
 // draws: a station map (Leaflet over an OpenFreeMap background), whole-system
 // totals over time, one station's history and typical day, a second map of
 // how often each station was empty or full in the last 24 hours with
-// top-15 bar charts, a stockout heatmap, and collection health (Plotly).
+// top-15 bar charts, and collection health (Plotly).
 //
 // Two layers of data:
 // - The build (data/*.json, rebuilt on a schedule) has the history: charts,
-//   heatmap, health, and a snapshot of every station.
+//   health, and a snapshot of every station.
 // - The live layer reads the newest poll file straight from the repository's
 //   public `data` branch on GitHub, so the map is as fresh as the collector.
 //   It never calls the bike share API itself, so visitors add no load there.
@@ -28,7 +28,6 @@
 
 const TZ = "America/New_York";
 const DATA_DIR = "data/";
-const HEATMAP_TOP = 20;  // rows shown before "Show all stations"
 // Map colors. A station with 0 bikes is red with a dashed outline (the
 // outline means it does not rely on color alone). A station with at least
 // one bike runs from yellow (few bikes for its size) to green (full). The
@@ -45,8 +44,6 @@ const SHARE_NEITHER_COLOR = "#bdbdbd";
 const SHARE_DARKEST = 0.5;
 const SHARE_TOP = 15;  // bars in each "most often empty / full" chart
 const SYSTEM_DEFAULT_DAYS = 7;  // the system charts open on this many days
-// Heatmap colors: green = rarely empty, through yellow, to red = often empty.
-const HEATMAP_SCALE = ["#1a9850", "#91cf60", "#fee08b", "#fc8d59", "#d73027"];
 const DEFAULT_STATION_MATCH = "TCS Hall";
 
 // Live layer settings.
@@ -63,7 +60,6 @@ const state = {
   shareMap: null, shareMarkers: {},
   maps: {},                    // Leaflet map by element id, for re-measuring
   pendingMaps: {},             // element id -> draw call waiting for its view to open
-  heatmap: null, heatmapShowAll: false,
   latestPollUtc: null,         // time of the poll the map is showing
   latestSource: null,          // "build" or "live"
   live: { mode: "checking" },  // checking, live, off, paused, nodata, error, unsupported
@@ -560,7 +556,7 @@ function renderSystem(system) {
   ], layout("Stations", { legend: { orientation: "h", y: -0.25 } }), PLOT_CONFIG);
 }
 
-// ---------- heatmap ----------
+// ---------- time labels ----------
 
 // "12 AM", "1 AM", ... "11 PM" for hours 0 to 23.
 function hourLabel(hour) {
@@ -568,50 +564,6 @@ function hourLabel(hour) {
   if (hour < 12) return `${hour} AM`;
   if (hour === 12) return "12 PM";
   return `${hour - 12} PM`;
-}
-
-// Stations x hour of day. Rows come sorted with the most often empty first,
-// so showing the first HEATMAP_TOP rows shows the stations that matter most.
-// The button below the chart switches between the top rows and all of them.
-function renderHeatmap(heatmap) {
-  const chart = document.getElementById("heatmap-chart");
-  const button = document.getElementById("heatmap-toggle");
-  if (!heatmap.station_ids.length) {
-    chart.textContent = "No data yet.";
-    button.hidden = true;
-    return;
-  }
-  state.heatmap = heatmap;
-  const total = heatmap.station_ids.length;
-  const rows = state.heatmapShowAll ? total : Math.min(HEATMAP_TOP, total);
-  const x = heatmap.hours.map(hourLabel);
-  const noGrid = { showgrid: false, zeroline: false };
-  Plotly.react(chart, [{
-    type: "heatmap",
-    z: heatmap.z.slice(0, rows),
-    x: x,
-    y: heatmap.names.slice(0, rows),
-    zmin: 0, zmax: 1,
-    xgap: 1, ygap: 1,  // thin gaps between cells instead of grid lines
-    colorscale: HEATMAP_SCALE.map((c, i) => [i / (HEATMAP_SCALE.length - 1), c]),
-    colorbar: { title: { text: "Share empty" }, tickformat: ".0%", thickness: 12 },
-    hoverongaps: false,
-    hovertemplate: "%{y}<br>%{x}<br>%{z:.0%} of polls had 0 bikes<extra></extra>",
-  }], baseLayout({
-    height: rows * 22 + 90,
-    margin: { l: 230, r: 16, t: 8, b: 40 },
-    xaxis: Object.assign({ tickvals: x.filter((_, h) => h % 3 === 0), side: "bottom" }, noGrid),
-    yaxis: Object.assign({ autorange: "reversed", automargin: true, tickfont: { size: 11 } }, noGrid),
-  }), PLOT_CONFIG);
-
-  button.hidden = total <= HEATMAP_TOP;
-  button.textContent = state.heatmapShowAll
-    ? `Show top ${HEATMAP_TOP} stations`
-    : `Show all ${total} stations`;
-  button.onclick = () => {
-    state.heatmapShowAll = !state.heatmapShowAll;
-    renderHeatmap(state.heatmap);
-  };
 }
 
 // ---------- collection health ----------
@@ -777,20 +729,18 @@ async function checkLive() {
 }
 
 // Reload the built charts (they are rebuilt on a schedule) without
-// reloading the page. The heatmap's show-all choice and the history chart's
-// zoom are kept.
+// reloading the page. The history chart's zoom is kept.
 async function refreshHistory() {
   state.lastHistory = Date.now();
   try {
-    const [meta, system, shares, heatmap, health] = await Promise.all([
+    const [meta, system, shares, health] = await Promise.all([
       fetchJSON("meta.json"), fetchJSON("system.json"), fetchJSON("empty_full_24h.json"),
-      fetchJSON("heatmap.json"), fetchJSON("health.json"),
+      fetchJSON("health.json"),
     ]);
     renderMeta(meta);
     renderSystem(system);
     renderShareMap(shares);
     renderShareBars(shares);
-    renderHeatmap(heatmap);
     renderHealth(health);
     if (meta.last_poll_utc && (!state.latestPollUtc || new Date(meta.last_poll_utc) > new Date(state.latestPollUtc))) {
       showIfNewer(await fetchJSON("stations.json"), meta.last_poll_utc, "build");
@@ -893,11 +843,11 @@ function setUpViews() {
 async function init() {
   setUpViews();  // before drawing, so the first view's maps get their real size
   const status = document.getElementById("status");
-  let meta, stations, system, shares, heatmap, health;
+  let meta, stations, system, shares, health;
   try {
-    [meta, stations, system, shares, heatmap, health] = await Promise.all([
+    [meta, stations, system, shares, health] = await Promise.all([
       fetchJSON("meta.json"), fetchJSON("stations.json"), fetchJSON("system.json"), fetchJSON("empty_full_24h.json"),
-      fetchJSON("heatmap.json"), fetchJSON("health.json"),
+      fetchJSON("health.json"),
     ]);
   } catch (error) {
     status.textContent = `Could not load dashboard data (${error.message}).`;
@@ -925,7 +875,6 @@ async function init() {
   attempt("system charts", () => renderSystem(system));
   attempt("empty or full map", () => renderShareMap(shares));
   attempt("empty or full bars", () => renderShareBars(shares));
-  attempt("heatmap", () => renderHeatmap(heatmap));
   attempt("collection health", () => renderHealth(health));
   attempt("station history", () => {
     const preferred = stations.find((s) => s.name.includes(DEFAULT_STATION_MATCH)) || stations[0];
