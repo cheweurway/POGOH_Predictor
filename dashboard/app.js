@@ -1,8 +1,8 @@
 // POGOH availability dashboard.
 //
 // Reads the JSON files written by scripts/build_dashboard.py (in data/) and
-// draws: a station map (Leaflet over an OpenFreeMap background), whole-system
-// totals over time, one station's history and typical day, a second map of
+// draws: a station map (Leaflet over an OpenFreeMap background), how many
+// stations were empty or full over time, one station's history and typical day, a second map of
 // how often each station was empty or full in the last 24 hours with
 // top-15 bar charts, and collection health (Plotly).
 //
@@ -43,7 +43,7 @@ const SHARE_FULL_SCALE = ["#92c5de", "#4575b4", "#313695"];
 const SHARE_NEITHER_COLOR = "#bdbdbd";
 const SHARE_DARKEST = 0.5;
 const SHARE_TOP = 15;  // bars in each "most often empty / full" chart
-const SYSTEM_DEFAULT_DAYS = 7;  // the system charts open on this many days
+const SYSTEM_DEFAULT_DAYS = 7;  // the system chart opens on this many days
 const DEFAULT_STATION_MATCH = "TCS Hall";
 
 // Live layer settings.
@@ -500,9 +500,9 @@ function localMinusDays(localStamp, days) {
   return new Date(ms).toISOString().slice(0, 19);
 }
 
-// Shared x axis for both system charts: 24 h / 7 days / All buttons, and a
-// starting view of the newest SYSTEM_DEFAULT_DAYS days. uirevision keeps the
-// user's choice when the charts refresh.
+// X axis for the system chart: 24 h / 7 days / All buttons, and a starting
+// view of the newest SYSTEM_DEFAULT_DAYS days. uirevision keeps the user's
+// choice when the chart refreshes.
 function systemXAxis(stamps) {
   const last = [...stamps].reverse().find((x) => x);
   const first = stamps.find((x) => x);
@@ -524,27 +524,19 @@ function systemXAxis(stamps) {
 }
 
 function renderSystem(system) {
-  const bikesChart = document.getElementById("system-bikes-chart");
   const countsChart = document.getElementById("system-counts-chart");
   if (!system.t_local.length) {
-    bikesChart.textContent = "No data yet.";
-    countsChart.textContent = "";
+    countsChart.textContent = "No data yet.";
     return;
   }
   const x = system.t_local;
-  const layout = (title, extra) => baseLayout(Object.assign({
+  const layout = baseLayout({
     uirevision: "system",
     margin: { l: 50, r: 16, t: 40, b: 48 },
     xaxis: systemXAxis(x),
-    yaxis: { title: { text: title }, rangemode: "tozero", gridcolor: cssVar("--grid") },
-  }, extra));
-
-  Plotly.react(bikesChart, [{
-    x: x, y: system.total_bikes, mode: "lines", name: "Bikes docked", connectgaps: false,
-    line: { color: cssVar("--bikes"), width: 2 },
-    customdata: system.n_stations,
-    hovertemplate: "%{x|%b %d %I:%M %p}<br>%{y} bikes docked at %{customdata} stations<extra></extra>",
-  }], layout("Bikes docked", { showlegend: false }), PLOT_CONFIG);
+    yaxis: { title: { text: "Stations" }, rangemode: "tozero", gridcolor: cssVar("--grid") },
+    legend: { orientation: "h", y: -0.25 },
+  });
 
   Plotly.react(countsChart, [
     { x: x, y: system.n_empty, mode: "lines", name: "Empty (0 bikes)", connectgaps: false,
@@ -553,7 +545,7 @@ function renderSystem(system) {
     { x: x, y: system.n_full, mode: "lines", name: "Full (0 empty docks)", connectgaps: false,
       line: { color: cssVar("--full-line"), width: 2 },
       hovertemplate: "%{x|%b %d %I:%M %p}<br>%{y} stations full<extra></extra>" },
-  ], layout("Stations", { legend: { orientation: "h", y: -0.25 } }), PLOT_CONFIG);
+  ], layout, PLOT_CONFIG);
 }
 
 // ---------- time labels ----------

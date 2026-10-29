@@ -3,9 +3,8 @@
 Given a Pittsburgh Pogoh bike share station's recent history, will it have
 zero free bikes (or zero empty docks) 30 and 60 minutes from now?
 
-The data counts bikes at stations, not trips. A change in the count can come
-from a rider or from a rebalancing truck, so results describe availability,
-not demand.
+The data counts bikes at stations, not trips, so results describe
+availability, not demand.
 
 Status: collecting data. Labels, features, and baselines are built and
 tested (milestone 2). Models, results, and limitations come after 2 to 3
@@ -58,7 +57,8 @@ A public dashboard shows the collected data:
 <https://cheweurway.github.io/POGOH_Predictor/>
 
 It has a map of stations now, a map of stations that were empty or full in
-the last 24 hours, each station's history, system totals, a typical day,
+the last 24 hours, each station's history, how many stations were empty or full over time,
+a typical day,
 and which stations run out most often. It also shows collection health.
 
 The page is rebuilt every 5 minutes by `.github/workflows/build-dashboard.yml`,

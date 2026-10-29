@@ -121,25 +121,22 @@ def station_series(obs, gap=GAP):
 def system_series(obs, gap=GAP, min_coverage=SYSTEM_MIN_COVERAGE):
     """Whole-system totals at each poll, ready to plot.
 
-    total_bikes: bikes docked at all stations together (dips mean bikes are
-    out, mostly being ridden). n_empty / n_full: stations with 0 bikes / 0
-    empty docks. A poll that reports fewer than `min_coverage` of the most
-    stations ever seen in one poll is left out, because missing stations
-    would look like a drop in bikes. Breaks follow the same gap rule as the
-    station charts.
+    n_empty / n_full: stations with 0 bikes / 0 empty docks. A poll that
+    reports fewer than `min_coverage` of the most stations ever seen in one
+    poll is left out, because missing stations would undercount both.
+    Breaks follow the same gap rule as the station charts.
     """
     if obs.empty:
-        return {"t_local": [], "total_bikes": [], "n_empty": [], "n_full": [], "n_stations": []}
+        return {"t_local": [], "n_empty": [], "n_full": [], "n_stations": []}
     per_poll = obs.groupby("poll_id").agg(
         t=("t", "min"),
-        total_bikes=("free_bikes", "sum"),
         n_empty=("free_bikes", lambda s: int((s == 0).sum())),
         n_full=("empty_slots", lambda s: int((s == 0).sum())),
         n_stations=("station_id", "nunique"),
     )
     per_poll = per_poll[per_poll["n_stations"] >= min_coverage * per_poll["n_stations"].max()]
     per_poll = per_poll.sort_values("t").reset_index(drop=True)
-    columns = {name: per_poll[name] for name in ("total_bikes", "n_empty", "n_full", "n_stations")}
+    columns = {name: per_poll[name] for name in ("n_empty", "n_full", "n_stations")}
     xs, ys = _with_breaks(per_poll["t"], columns, gap)
     return {"t_local": xs, **ys}
 

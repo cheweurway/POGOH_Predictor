@@ -216,17 +216,16 @@ def test_system_totals_and_counts_per_poll():
     df = _with_polls(obs([("A", 0, 0, 10), ("B", 0, 7, 0), ("C", 0, 3, 3),
                           ("A", 5, 2, 8), ("B", 5, 7, 0), ("C", 5, 3, 3)]))
     s = system_series(df)
-    assert s["total_bikes"] == [10, 12]
     assert s["n_empty"] == [1, 0]
     assert s["n_full"] == [1, 1]
     assert s["t_local"][0] == "2026-10-05T10:00:00"
 
 
 def test_system_skips_polls_missing_stations_and_breaks_at_gaps():
-    rows = [(sid, m, 5, 5) for m in (0, 5, 40) for sid in "ABCDEFGHIJ"]
-    rows += [("A", 10, 5, 5)]  # a poll that reached only 1 of 10 stations
+    rows = [(sid, m, 0, 5) for m in (0, 5, 40) for sid in "ABCDEFGHIJ"]
+    rows += [("A", 10, 0, 5)]  # a poll that reached only 1 of 10 stations
     s = system_series(_with_polls(obs(rows)))
-    assert s["total_bikes"] == [50, 50, None, 50]  # minute 10 left out; 35 min gap breaks
+    assert s["n_empty"] == [10, 10, None, 10]  # minute 10 left out; 35 min gap breaks
 
 
 # --- typical_day -----------------------------------------------------------

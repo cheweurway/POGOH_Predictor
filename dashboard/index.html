@@ -108,9 +108,7 @@
 
     <section id="view-system" data-view="system" aria-labelledby="system-title">
       <h2 id="system-title">Whole system over time</h2>
-      <p class="note">Total bikes docked at all stations together. Dips mean bikes are out of the docks: mostly being ridden, but trucks and maintenance also take bikes out, so this is not a trip count. Use the buttons to show the last 24 hours, 7 days, or everything.</p>
-      <div id="system-bikes-chart" class="chart"></div>
-      <p class="note">How many stations had no bikes (empty) and how many had no empty docks (full) at each poll. Polls that missed some stations are left out, and the line breaks at gaps of more than <span class="gap-minutes">10</span> minutes.</p>
+      <p class="note">How many stations had no bikes (empty) and how many had no empty docks (full) at each poll. Polls that missed some stations are left out, and the line breaks at gaps of more than <span class="gap-minutes">10</span> minutes. Use the buttons to show the last 24 hours, 7 days, or everything.</p>
       <div id="system-counts-chart" class="chart"></div>
     </section>
 
@@ -129,7 +127,7 @@
 
   <footer>
     <p>Station data: <a href="https://citybik.es">CityBikes</a>, built on <a href="https://github.com/eskerda/pybikes">PyBikes</a>. Map: <a href="https://openfreemap.org">OpenFreeMap</a>, <a href="https://www.openmaptiles.org/">&copy; OpenMapTiles</a>, data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.</p>
-    <p>Counts show bikes at stations, not trips: a change can come from a rider or from a rebalancing truck. All times are Pittsburgh time.</p>
+    <p>Counts show bikes at stations, not trips. All times are Pittsburgh time.</p>
     <p id="built-at"></p>
     <p><a href="https://github.com/cheweurway/POGOH_Predictor">Source code</a></p>
   </footer>
