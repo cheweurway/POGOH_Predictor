@@ -10,6 +10,10 @@
 # - Only one run at a time; a queued run waits instead of overlapping.
 # - poll_to_file.py skips if the last successful poll was under 4 minutes
 #   ago, so runs released from the queue together do not poll back to back.
+# - After the poll, weather_to_file.py saves live weather from Open-Meteo
+#   under weather/ on the same branch, at most every ~15 minutes (it skips
+#   otherwise). That step may fail without failing the run, so weather
+#   problems never stop bike polls; both get committed in one commit.
 # - "Run workflow" on the Actions tab triggers a poll by hand.
 
 name: Collect Pogoh snapshot
@@ -50,14 +54,20 @@ jobs:
       - name: Poll once
         run: python scripts/poll_to_file.py --out store
 
-      - name: Commit and push the new record
+      - name: Save live weather (about every 15 minutes)
+        continue-on-error: true
+        timeout-minutes: 1
+        run: python scripts/weather_to_file.py --out store
+
+      - name: Commit and push new records
         working-directory: store
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add raw
+          # -A adds raw/ and weather/; nothing else is written under store.
+          git add -A
           if git diff --cached --quiet; then
-            echo "No new record (poll skipped by the minimum gap guard)."
+            echo "No new record (skipped by the minimum gap guards)."
             exit 0
           fi
           git commit --quiet -m "Add poll record"

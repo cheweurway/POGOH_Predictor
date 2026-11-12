@@ -13,6 +13,10 @@ where payload is the API response exactly as received (null if the poll
 failed). Files are named by poll time, for example
 raw/2026/10/05/20261005T140242_183154Z.json.gz, so two polls never collide
 and sorting by name sorts by time.
+
+Weather snapshots from Open-Meteo travel the same way, under weather/ instead
+of raw/ (see pogoh.weather_live). The helpers below take a `folder` and a
+`time_key` so both kinds of record share one code path.
 """
 
 import gzip
@@ -65,33 +69,33 @@ def git(*args, repo=PROJECT_ROOT):
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True).stdout
 
 
-def read_records_from_branch(ref=DATA_REF, repo=PROJECT_ROOT):
-    """Yield every record stored under raw/ on a git branch.
+def read_records_from_branch(ref=DATA_REF, repo=PROJECT_ROOT, folder="raw"):
+    """Yield every record stored under `folder` (raw/ by default) on a git branch.
 
     Reads straight from git with `git archive`, so nothing is checked out.
     The branch must already be fetched (for example `git fetch origin data`).
     """
     tree = git("ls-tree", "--name-only", ref, repo=repo).decode().split()
-    if "raw" not in tree:
-        return  # branch exists but has no polls yet
-    archive = git("archive", "--format=tar", ref, "raw", repo=repo)
+    if folder not in tree:
+        return  # branch exists but has no records of this kind yet
+    archive = git("archive", "--format=tar", ref, folder, repo=repo)
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
         for member in tar:
             if member.isfile() and member.name.endswith(".json.gz"):
                 yield decode_record(tar.extractfile(member).read())
 
 
-def latest_success_time(root):
-    """Poll time of the newest successful record under root, or None.
+def latest_success_time(root, folder="raw", time_key="polled_at_utc"):
+    """Time of the newest successful record under root/folder, or None.
 
     File names sort by time, so this reads files newest first and stops at
     the first successful one. Failed polls are skipped: a failure never
     reached the API, so it should not delay the next attempt.
     """
-    for path in sorted(Path(root).glob("raw/*/*/*/*.json.gz"), reverse=True):
+    for path in sorted(Path(root).glob(f"{folder}/*/*/*/*.json.gz"), reverse=True):
         record = decode_record(path.read_bytes())
         if record["ok"]:
-            return datetime.fromisoformat(record["polled_at_utc"])
+            return datetime.fromisoformat(record[time_key])
     return None
 
 
