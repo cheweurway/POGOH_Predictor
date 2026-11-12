@@ -1,15 +1,20 @@
 {
  "latitude": 40.45694,
  "longitude": -79.97177,
- "generationtime_ms": 0.09703636169433594,
+ "generationtime_ms": 0.1373291015625,
  "utc_offset_seconds": 0,
  "timezone": "GMT",
  "timezone_abbreviation": "GMT",
  "elevation": 290.0,
  "hourly_units": {
   "time": "iso8601",
-  "temperature_2m": "Â°C",
-  "precipitation": "mm"
+  "temperature_2m": "\u00b0C",
+  "apparent_temperature": "\u00b0C",
+  "precipitation": "mm",
+  "rain": "mm",
+  "snowfall": "cm",
+  "wind_speed_10m": "km/h",
+  "is_day": ""
  },
  "hourly": {
   "time": [
@@ -28,6 +33,14 @@
    13.5,
    14.8
   ],
+  "apparent_temperature": [
+   11.5,
+   13.0,
+   13.2,
+   12.5,
+   13.5,
+   14.8
+  ],
   "precipitation": [
    0.0,
    0.0,
@@ -35,6 +48,38 @@
    0.0,
    0.0,
    0.0
+  ],
+  "rain": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "snowfall": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "wind_speed_10m": [
+   5.3,
+   4.4,
+   4.8,
+   4.1,
+   2.5,
+   2.7
+  ],
+  "is_day": [
+   0,
+   0,
+   0,
+   0,
+   1,
+   1
   ]
  }
 }

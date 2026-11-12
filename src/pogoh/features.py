@@ -23,7 +23,9 @@ Academic calendar (if a calendar is given)
   pitt_finals
 
 Weather (if an hourly weather table is given, see weather.py)
-  temperature_c, precipitation_mm from the latest hour at or before t
+  temperature_c, apparent_temperature_c, precipitation_mm, rain_mm,
+  snowfall_cm, wind_speed_kmh, is_day from the latest hour at or before t,
+  plus precip_3h_mm and hours_since_precip computed from hours up to then
 
 Leakage rule: no feature for time t may read any row after t. The tests in
 tests/test_features.py enforce this by rebuilding features with all later

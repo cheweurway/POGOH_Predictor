@@ -20,8 +20,9 @@ asks projects to credit it as the source.
 The API returns only a live snapshot, so this project polls it every 5 minutes
 and keeps its own history.
 
-Weather data by [Open-Meteo.com](https://open-meteo.com), from its
-historical weather API, licensed CC BY 4.0.
+Weather data by [Open-Meteo.com](https://open-meteo.com), from its forecast
+API (saved live) and its historical weather API (earlier hours), licensed
+CC BY 4.0.
 
 The academic calendar in `data/calendar.csv` is hand-made from the official
 CMU and University of Pittsburgh 2026-27 academic calendars.
@@ -36,12 +37,20 @@ commits one gzipped JSON file per poll to the `data` branch of this
 repository, so collection does not depend on a laptop being awake. The raw
 data is therefore public, like the API it comes from.
 
+The same workflow also saves live weather from Open-Meteo under `weather/`
+on the `data` branch, about every 15 minutes: the last few hours, the
+current estimate, and the forecast for the next few hours, as received.
+Weather is saved live because it records what was known at the time and
+cannot be fetched that way later. That step is allowed to fail without
+stopping the bike poll, and a failed fetch is saved too, so gaps show.
+
 GitHub runs scheduled workflows on a best-effort basis: runs can be delayed
 or dropped when GitHub is busy. Every record stores the actual fetch time,
 so the irregular spacing is visible and handled when building labels.
 
 For analysis, the laptop imports the branch into a local SQLite database,
-`data/pogoh.db`, which is not committed:
+`data/pogoh.db`, and rebuilds the hourly weather table `data/weather.csv`
+(neither is committed):
 
 ```powershell
 .venv\Scripts\python scripts\import_raw.py
@@ -131,8 +140,18 @@ fraction full. Values and changes from about 10, 30, and 60 minutes earlier
 (missing if no observation is close enough, never filled in), and minutes
 since the station's previous observation. Hour of day as sine and cosine,
 day of week, and weekend, in Pittsburgh time. CMU and Pitt in-term,
-no-classes, and finals flags. Hourly temperature and precipitation from the
-latest hour at or before t.
+no-classes, and finals flags.
+
+Weather, from the latest hour at or before t (missing if over 2 hours old):
+temperature, feels-like temperature, precipitation, rain, snowfall, wind
+speed, daylight, precipitation over the last 3 hours, and hours since the
+last precipitation (capped at 72). One point in Oakland stands for the whole
+city. Hours saved live use the first snapshot taken after the hour ended;
+other hours come from the ERA5 historical archive, and a `source` column
+records which. These are weather model estimates, not station readings.
+Open-Meteo's historical *forecast* API was tried for the earlier hours and
+rejected: its rain did not match ERA5 (it put 61.9 mm into one hour on
+2026-10-14, where ERA5 has 17.7 mm over the day).
 
 ## Files
 
@@ -144,7 +163,10 @@ latest hour at or before t.
   branch, and the import of those records into the database.
 - `.github/workflows/collect.yml`: the scheduled cloud collector.
 - `scripts/poll_to_file.py`: the poll step the workflow runs.
-- `scripts/import_raw.py`: fetches the `data` branch and imports new polls.
+- `src/pogoh/weather_live.py`, `scripts/weather_to_file.py`: the live
+  weather step the workflow runs (needs only `requests`).
+- `scripts/import_raw.py`: fetches the `data` branch, imports new polls,
+  and rebuilds the weather table.
 - `scripts/run_collector.py`, `scripts/install_schedule.ps1`: the optional
   local collector and its Task Scheduler setup.
 - `src/pogoh/data.py`: loads observations and polls from the database into
@@ -152,8 +174,9 @@ latest hour at or before t.
 - `src/pogoh/labels.py`: the future-state targets and transition flags.
 - `src/pogoh/features.py`: model inputs, built from past data only.
 - `src/pogoh/calendar.py` and `data/calendar.csv`: academic calendar flags.
-- `src/pogoh/weather.py`, `scripts/update_weather.py`: hourly weather,
-  cached in `data/weather.csv` (not committed).
+- `src/pogoh/weather.py`, `scripts/update_weather.py`: the hourly weather
+  table (live records plus ERA5 backfill) and weather features, cached in
+  `data/weather.csv` (not committed).
 - `src/pogoh/evaluate.py`: the time split and the metrics (precision,
   recall, F1, PR-AUC, overall and on transition rows).
 - `src/pogoh/baselines.py`: persistence and hour-of-week baselines.
@@ -169,8 +192,10 @@ latest hour at or before t.
 
 ```powershell
 .venv\Scripts\python scripts\import_raw.py
-.venv\Scripts\python scripts\update_weather.py
 ```
+
+(`import_raw.py` also refreshes the weather; `update_weather.py` does only
+that.)
 
 ## Data notes
 

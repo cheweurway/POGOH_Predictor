@@ -1,33 +1,33 @@
-"""Download hourly Pittsburgh weather into data/weather.csv.
+"""Rebuild data/weather.csv: live weather records plus historical backfill.
 
-Covers the first collected poll through today. Run it before building
-features, for example right after import_raw.py:
+import_raw.py already does this after importing polls, so you only need
+this script to refresh weather on its own:
 
     .venv\\Scripts\\python scripts\\update_weather.py
 
-One small request to Open-Meteo per run, well under their free limits.
+It reads live weather records from the data branch as last fetched (run
+`git fetch origin data` or import_raw.py first for the newest ones) and
+makes one small request to Open-Meteo's historical weather API (ERA5) for hours
+the live records do not cover. See src/pogoh/weather.py.
 Weather data by Open-Meteo.com, licensed CC BY 4.0.
 """
 
-import sqlite3
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from pogoh.db import DEFAULT_DB_PATH  # noqa: E402
-from pogoh.data import load_polls  # noqa: E402
-from pogoh.weather import DEFAULT_CACHE_PATH, update_cache  # noqa: E402
+from pogoh.weather import DEFAULT_CACHE_PATH, refresh_weather_cache  # noqa: E402
 
 
 def main():
-    polls = load_polls(sqlite3.connect(DEFAULT_DB_PATH))
-    if polls.empty:
+    weather = refresh_weather_cache()
+    if weather is None:
         print("No polls yet, nothing to match weather to.")
         return 1
-    first_date = polls["polled_at_utc"].min().date()
-    weather = update_cache(first_date)
-    print(f"Saved {len(weather)} hours ({weather['time'].min()} to {weather['time'].max()}) to {DEFAULT_CACHE_PATH}")
+    counts = weather["source"].value_counts().to_dict()
+    print(f"Saved {len(weather)} hours ({weather['time'].min()} to {weather['time'].max()}) "
+          f"to {DEFAULT_CACHE_PATH}: live {counts.get('live', 0)}, backfill {counts.get('backfill', 0)}")
     return 0
 
 

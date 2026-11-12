@@ -11,8 +11,13 @@ What it does:
    untouched (see pogoh.raw.read_records_from_branch).
 3. Loads records into data/pogoh.db. Polls already in the database are
    skipped, so it is safe to run as often as you like.
+4. Rebuilds data/weather.csv from the live weather records on the same
+   branch, filling earlier or missed hours from Open-Meteo's historical
+   weather API, ERA5 (one small request; see pogoh.weather).
 
-Use --no-fetch to import from what was fetched last time (works offline).
+Use --no-fetch to import from what was fetched last time (works offline,
+and also skips the weather backfill request). Use --no-weather to skip
+step 4.
 """
 
 import argparse
@@ -23,12 +28,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from pogoh.db import DEFAULT_DB_PATH, connect  # noqa: E402
 from pogoh.raw import git, import_records, read_records_from_branch  # noqa: E402
+from pogoh.weather import DEFAULT_CACHE_PATH, refresh_weather_cache  # noqa: E402
 
 
 def main():
     parser = argparse.ArgumentParser(description="Import raw poll records into the local database")
     parser.add_argument("--db", default=DEFAULT_DB_PATH, help="SQLite file to write to")
-    parser.add_argument("--no-fetch", action="store_true", help="skip git fetch")
+    parser.add_argument("--no-fetch", action="store_true", help="skip git fetch and the weather backfill")
+    parser.add_argument("--no-weather", action="store_true", help="do not rebuild data/weather.csv")
     args = parser.parse_args()
 
     if not args.no_fetch:
@@ -43,6 +50,14 @@ def main():
 
     print(f"Imported {imported} new polls, skipped {skipped} already stored.")
     print(f"Database now has {n_ok or 0} successful and {n_fail or 0} failed polls.")
+
+    if not (args.no_fetch or args.no_weather):
+        weather = refresh_weather_cache(db_path=args.db)
+        if weather is not None:
+            counts = weather["source"].value_counts().to_dict()
+            print(f"Weather: {len(weather)} hours to {weather['time'].max()} "
+                  f"(live {counts.get('live', 0)}, backfill {counts.get('backfill', 0)}) "
+                  f"in {DEFAULT_CACHE_PATH}")
     return 0
 
 
