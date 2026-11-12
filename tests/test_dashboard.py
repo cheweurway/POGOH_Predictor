@@ -5,6 +5,8 @@ Each test builds a tiny hand-made table so the expected answer is obvious.
 
 import json
 
+import pytest
+
 import pandas as pd
 
 from pogoh.dashboard import (
@@ -237,7 +239,12 @@ def test_typical_day_by_local_hour():
     t = typical_day(obs(rows))["A"]
     assert t["hours"][10] == 10 and t["n"][10] == 12
     assert t["mean"][10] == 4.0
-    assert t["q25"][10] == 0.0 and t["q75"][10] == 8.0
+    # Sorted: 0 x4, 4 x4, 8 x4. Linear interpolation over positions 0..11.
+    assert t["q10"][10] == 0.0 and t["q90"][10] == 8.0
+    assert t["q40"][10] == 4.0 and t["q60"][10] == 4.0
+    assert t["q30"][10] == pytest.approx(1.2)  # position 3.3: 0 + 0.3 * (4 - 0)
+    assert all(k in t for k in ("q10", "q20", "q30", "q40", "q60", "q70", "q80", "q90"))
     assert t["mean"][11] is None and t["n"][11] == 2  # under the 3-reading minimum
+    assert t["q10"][11] is None
     assert t["mean"][3] is None and t["n"][3] == 0
     json.dumps(t, allow_nan=False)

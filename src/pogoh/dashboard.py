@@ -22,6 +22,13 @@ TZ = "America/New_York"
 GAP = pd.Timedelta(minutes=10)
 HEATMAP_MIN_OBS = 3  # fewer observations than this leaves a heatmap cell blank
 TYPICAL_MIN_OBS = 3  # fewer observations than this leaves a typical-day hour blank
+# Percentiles for the typical-day bands, as symmetric pairs around the median.
+TYPICAL_QUANTILES = (0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9)
+
+
+def _qname(q):
+    """0.1 -> "q10"."""
+    return f"q{round(q * 100)}"
 SYSTEM_MIN_COVERAGE = 0.9  # polls reporting fewer stations than this share are left out
 SHARE_WINDOW = pd.Timedelta(hours=24)  # empty/full map looks back this far
 SHARE_MIN_HOURS = 12  # less observed time than this: "not enough data"
@@ -144,17 +151,17 @@ def system_series(obs, gap=GAP, min_coverage=SYSTEM_MIN_COVERAGE):
 def typical_day(obs, min_obs=TYPICAL_MIN_OBS):
     """Per station: free_bikes by hour of day (Pittsburgh time, all days).
 
-    For each hour: the mean and the 25th and 75th percentiles of the
-    observations in that hour, and how many there were. Hours with fewer
-    than `min_obs` observations are None. Like the heatmap, this counts
-    polls, not minutes.
+    For each hour: the mean, the percentiles in TYPICAL_QUANTILES (keys
+    q10 ... q90) of the observations in that hour, and how many there were.
+    The page draws nested bands from the percentile pairs (10-90, 20-80,
+    30-70, 40-60). Hours with fewer than `min_obs` observations are None.
+    Like the heatmap, this counts polls, not minutes.
     """
     hour = hour_of_day_local(obs["t"])
     grouped = obs["free_bikes"].astype(float).groupby([obs["station_id"], hour])
     stats = pd.DataFrame({
         "mean": grouped.mean(),
-        "q25": grouped.quantile(0.25),
-        "q75": grouped.quantile(0.75),
+        **{_qname(q): grouped.quantile(q) for q in TYPICAL_QUANTILES},
         "n": grouped.size(),
     })
     out = {}
@@ -163,8 +170,9 @@ def typical_day(obs, min_obs=TYPICAL_MIN_OBS):
         enough = g["n"].fillna(0) >= min_obs
         out[station_id] = {
             "hours": list(range(24)),
-            **{name: [_clean(v) if ok else None for v, ok in zip(g[name], enough)]
-               for name in ("mean", "q25", "q75")},
+            # Rounded to 2 decimals: float noise like 7.200000000000003 only bloats the JSON.
+            **{name: [round(_clean(v), 2) if ok else None for v, ok in zip(g[name], enough)]
+               for name in ("mean", *map(_qname, TYPICAL_QUANTILES))},
             "n": [int(v) if v == v else 0 for v in g["n"]],
         }
     return out

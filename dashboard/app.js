@@ -102,6 +102,20 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
+// "#5ec2d6" plus 0.2 -> "rgba(94, 194, 214, 0.2)". Other formats pass through.
+function withAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return hex;
+  const [r, g, b] = m.slice(1).map((x) => parseInt(x, 16));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// Typical-day bands as percentile pairs, outermost first (matches
+// TYPICAL_QUANTILES in pogoh/dashboard.py). Four overlapping fills at this
+// opacity stack to about 0.6 in the middle.
+const TYPICAL_BANDS = [[10, 90], [20, 80], [30, 70], [40, 60]];
+const TYPICAL_BAND_ALPHA = 0.2;
+
 // Interpolate a list of hex colors at f in [0, 1].
 function scaleColor(scale, f) {
   const x = Math.min(1, Math.max(0, f)) * (scale.length - 1);
@@ -376,15 +390,27 @@ function renderTypicalDay(series) {
     dayY.push(series.free_bikes[i]);
   });
 
-  const traces = [
-    { x: mid, y: typical.q75, mode: "lines", line: { width: 0 }, hoverinfo: "skip", showlegend: false, connectgaps: false },
-    { x: mid, y: typical.q25, mode: "lines", line: { width: 0 }, fill: "tonexty",
-      fillcolor: "rgba(127, 127, 127, 0.25)", name: "Middle half of readings", hoverinfo: "skip", connectgaps: false },
-    { x: mid, y: typical.mean, mode: "lines+markers", name: "Average", connectgaps: false,
-      line: { color: bikes, width: 2 }, marker: { size: 5, color: bikes },
-      text: hoverHours, customdata: typical.n,
-      hovertemplate: "%{text}<br>Average %{y:.1f} bikes<br>%{customdata} readings<extra></extra>" },
-  ];
+  // Nested percentile bands (10-90, 20-80, 30-70, 40-60). Each is a
+  // see-through fill, and they overlap, so the shading stacks up: darkest in
+  // the middle, fading out toward the rarer readings at the edges. Each band
+  // is an upper edge trace followed by its lower edge filled up to it
+  // ("tonexty" fills to the trace just before). One legend entry stands for all.
+  const traces = [];
+  const fill = withAlpha(bikes, TYPICAL_BAND_ALPHA);
+  TYPICAL_BANDS.forEach(([lo, hi], i) => {
+    traces.push({ x: mid, y: typical[`q${hi}`], mode: "lines", line: { width: 0 },
+      hoverinfo: "skip", showlegend: false, connectgaps: false });
+    traces.push({ x: mid, y: typical[`q${lo}`], mode: "lines", line: { width: 0 }, fill: "tonexty",
+      fillcolor: fill, hoverinfo: "skip", connectgaps: false,
+      name: "Spread of readings (darker = more common)", legendgroup: "bands", showlegend: i === 0 });
+  });
+  const custom = typical.n.map((n, h) => [n, typical.q10[h], typical.q90[h]]);
+  traces.push({ x: mid, y: typical.mean, mode: "lines+markers", name: "Average", connectgaps: false,
+    line: { color: bikes, width: 2 }, marker: { size: 5, color: bikes },
+    text: hoverHours, customdata: custom,
+    hovertemplate: "%{text}<br>Average %{y:.1f} bikes<br>"
+      + "8 in 10 readings: %{customdata[1]:.0f} to %{customdata[2]:.0f} bikes<br>"
+      + "%{customdata[0]} readings<extra></extra>" });
   if (dayX.length) {
     traces.push({
       x: dayX, y: dayY, mode: "lines", name: `${shortDate(lastDay)} so far`, connectgaps: false,
