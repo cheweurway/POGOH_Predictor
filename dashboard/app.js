@@ -286,6 +286,24 @@ function renderMap(stations) {
   }
 }
 
+// ---------- chart messages ----------
+
+// Show a text message in place of a chart. Plotly.purge first, so Plotly
+// forgets the old plot; otherwise a later Plotly.react would only patch a
+// plot whose elements are gone and draw nothing.
+function showChartMessage(chart, text) {
+  Plotly.purge(chart);
+  chart.textContent = text;
+}
+
+// Remove a message before drawing. Only when no plot is there: clearing the
+// children of a live plot deletes it while Plotly still thinks it exists,
+// which leaves the chart blank (this broke the typical-day chart after the
+// first station).
+function clearChartMessage(chart) {
+  if (!chart._fullLayout) chart.textContent = "";
+}
+
 // ---------- station picker and history ----------
 
 function renderPicker(stations) {
@@ -308,10 +326,11 @@ async function selectStation(stationId) {
   try {
     series = await fetchJSON(`series/${stationId}.json`);
   } catch (error) {
-    chart.textContent = `Could not load this station's history (${error.message}).`;
+    showChartMessage(chart, `Could not load this station's history (${error.message}).`);
     return;
   }
   if (state.selected !== stationId) return;  // the user picked another station meanwhile
+  clearChartMessage(chart);
 
   // Bikes available only (the user chose not to show empty docks here).
   const traces = [
@@ -340,11 +359,10 @@ function renderTypicalDay(series) {
   const chart = document.getElementById("typical-chart");
   const typical = series.typical_day;
   if (!typical || typical.mean.every((v) => v == null)) {
-    Plotly.purge(chart);
-    chart.textContent = "Not enough data for this station yet.";
+    showChartMessage(chart, "Not enough data for this station yet.");
     return;
   }
-  chart.textContent = "";
+  clearChartMessage(chart);
   const mid = typical.hours.map((h) => h + 0.5);
   const hoverHours = typical.hours.map((h) => `${hourLabel(h)} hour`);
   const bikes = cssVar("--bikes");
@@ -468,11 +486,10 @@ function renderShareBars(shares) {
     const top = usable.filter((r) => r[key] > 0)
       .sort((a, b) => b[key] - a[key]).slice(0, SHARE_TOP);
     if (!top.length) {
-      Plotly.purge(chart);
-      chart.textContent = emptyText;
+      showChartMessage(chart, emptyText);
       return;
     }
-    chart.textContent = "";
+    clearChartMessage(chart);
     Plotly.react(chart, [{
       type: "bar", orientation: "h",
       x: top.map((r) => r[key]), y: top.map((r) => r.name),
@@ -526,9 +543,10 @@ function systemXAxis(stamps) {
 function renderSystem(system) {
   const countsChart = document.getElementById("system-counts-chart");
   if (!system.t_local.length) {
-    countsChart.textContent = "No data yet.";
+    showChartMessage(countsChart, "No data yet.");
     return;
   }
+  clearChartMessage(countsChart);
   const x = system.t_local;
   const layout = baseLayout({
     uirevision: "system",
